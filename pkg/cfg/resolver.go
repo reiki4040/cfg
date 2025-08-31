@@ -26,14 +26,20 @@ type Resolver struct {
 	envVars      map[string]string
 	cache        map[string]string
 	stageResolver *StageResolver
+	pathPrefix   string
 }
 
 func NewResolver(psClient *aws.ParameterStoreClient, stageResolver *StageResolver) *Resolver {
+	return NewResolverWithPrefix(psClient, stageResolver, "")
+}
+
+func NewResolverWithPrefix(psClient *aws.ParameterStoreClient, stageResolver *StageResolver, pathPrefix string) *Resolver {
 	return &Resolver{
 		psClient:      psClient,
 		envVars:       getEnvironmentVariables(),
 		cache:         make(map[string]string),
 		stageResolver: stageResolver,
+		pathPrefix:    pathPrefix,
 	}
 }
 
@@ -44,7 +50,19 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 	psMatches := psReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
 	for _, match := range psMatches {
 		if len(match) >= 2 {
-			key := r.stageResolver.ResolvePath(match[1])
+			path := match[1]
+			// Apply path prefix if path doesn't start with /
+			if r.pathPrefix != "" && !strings.HasPrefix(path, "/") {
+				// Ensure path prefix starts with /
+				prefix := r.pathPrefix
+				if !strings.HasPrefix(prefix, "/") {
+					prefix = "/" + prefix
+				}
+				// Ensure path prefix doesn't end with /
+				prefix = strings.TrimSuffix(prefix, "/")
+				path = prefix + "/" + path
+			}
+			key := r.stageResolver.ResolvePath(path)
 			references = append(references, Reference{
 				Type: "ps",
 				Key:  key,

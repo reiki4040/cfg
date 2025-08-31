@@ -99,6 +99,10 @@ func (p *ParameterStoreClient) getParametersBatch(ctx context.Context, names []s
 }
 
 func (p *ParameterStoreClient) PutParameter(ctx context.Context, name, value string, paramType string, overwrite bool) error {
+	return p.PutParameterWithKey(ctx, name, value, paramType, overwrite, "")
+}
+
+func (p *ParameterStoreClient) PutParameterWithKey(ctx context.Context, name, value string, paramType string, overwrite bool, kmsKeyID string) error {
 	var ssmType types.ParameterType
 	switch strings.ToLower(paramType) {
 	case "string":
@@ -116,6 +120,11 @@ func (p *ParameterStoreClient) PutParameter(ctx context.Context, name, value str
 		Value:     aws.String(value),
 		Type:      ssmType,
 		Overwrite: aws.Bool(overwrite),
+	}
+
+	// Set KMS key ID for SecureString parameters
+	if ssmType == types.ParameterTypeSecureString && kmsKeyID != "" {
+		input.KeyId = aws.String(kmsKeyID)
 	}
 
 	_, err := p.client.PutParameter(ctx, input)
@@ -139,14 +148,34 @@ func (p *ParameterStoreClient) DeleteParameter(ctx context.Context, name string)
 	return nil
 }
 
+type ParameterInfo struct {
+	Name  string
+	Value string
+	Type  string
+}
+
 func (p *ParameterStoreClient) GetParametersByPath(ctx context.Context, path string, recursive bool, decrypt bool) (map[string]string, error) {
+	parameterInfos, err := p.GetParameterInfosByPath(ctx, path, recursive, decrypt)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make(map[string]string)
+	for _, param := range parameterInfos {
+		results[param.Name] = param.Value
+	}
+
+	return results, nil
+}
+
+func (p *ParameterStoreClient) GetParameterInfosByPath(ctx context.Context, path string, recursive bool, decrypt bool) ([]ParameterInfo, error) {
 	input := &ssm.GetParametersByPathInput{
 		Path:           aws.String(path),
 		Recursive:      aws.Bool(recursive),
 		WithDecryption: aws.Bool(decrypt),
 	}
 
-	results := make(map[string]string)
+	var results []ParameterInfo
 	paginator := ssm.NewGetParametersByPathPaginator(p.client, input)
 
 	for paginator.HasMorePages() {
@@ -156,7 +185,11 @@ func (p *ParameterStoreClient) GetParametersByPath(ctx context.Context, path str
 		}
 
 		for _, param := range page.Parameters {
-			results[*param.Name] = *param.Value
+			results = append(results, ParameterInfo{
+				Name:  *param.Name,
+				Value: *param.Value,
+				Type:  string(param.Type),
+			})
 		}
 	}
 

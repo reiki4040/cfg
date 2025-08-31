@@ -36,6 +36,10 @@ func (e *ConfigError) Error() string {
 }
 
 func New(opts ...LoadOptions) *Loader {
+	return NewWithPrefix("", opts...)
+}
+
+func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 	var options LoadOptions
 	if len(opts) > 0 {
 		options = opts[0]
@@ -55,7 +59,7 @@ func New(opts ...LoadOptions) *Loader {
 		}
 	}
 
-	resolver := NewResolver(awsClient, stageResolver)
+	resolver := NewResolverWithPrefix(awsClient, stageResolver, pathPrefix)
 	parser := NewParser(resolver)
 
 	return &Loader{

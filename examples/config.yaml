@@ -1,0 +1,16 @@
+database:
+  host: ${ps:/app/{stage}/db/host}
+  password: ${ps:/app/{stage}/db/password}
+  port: ${env:DB_PORT}
+  name: "myapp"
+  url: "postgres://${ps:/app/{stage}/db/host}:${env:DB_PORT}/myapp"
+
+app:
+  name: "${env:APP_NAME}-{stage}"
+  debug: ${env:DEBUG}
+  api_url: "https://api-{stage}.example.com"
+  timeout: 30
+
+redis:
+  url: ${ps:/shared/{stage}/redis/url}
+  password: ${ps:/shared/{stage}/redis/password}

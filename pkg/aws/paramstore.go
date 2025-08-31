@@ -26,6 +26,24 @@ func NewParameterStoreClient(ctx context.Context, region string) (*ParameterStor
 	}, nil
 }
 
+func NewParameterStoreClientWithProfile(ctx context.Context, region, profile string) (*ParameterStoreClient, error) {
+	var opts []func(*config.LoadOptions) error
+	opts = append(opts, config.WithRegion(region))
+	
+	if profile != "" {
+		opts = append(opts, config.WithSharedConfigProfile(profile))
+	}
+	
+	cfg, err := config.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config with profile %s: %w", profile, err)
+	}
+
+	return &ParameterStoreClient{
+		client: ssm.NewFromConfig(cfg),
+	}, nil
+}
+
 func (p *ParameterStoreClient) GetParameter(ctx context.Context, name string, decrypt bool) (string, error) {
 	input := &ssm.GetParameterInput{
 		Name:           aws.String(name),

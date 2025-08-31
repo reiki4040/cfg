@@ -39,11 +39,7 @@ func init() {
 }
 
 func createAWSClient() (*aws.ParameterStoreClient, error) {
-	if awsProfile != "" {
-		os.Setenv("AWS_PROFILE", awsProfile)
-	}
-	
-	return aws.NewParameterStoreClient(context.Background(), awsRegion)
+	return aws.NewParameterStoreClientWithProfile(context.Background(), awsRegion, awsProfile)
 }
 
 func createStageResolver() *cfg.StageResolver {

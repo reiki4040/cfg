@@ -3,7 +3,9 @@ package cfg
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/yourusername/cfg/pkg/aws"
 )
@@ -71,7 +73,17 @@ func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 }
 
 func (l *Loader) LoadFromFile(path string, target interface{}) error {
-	data, err := ioutil.ReadFile(path)
+	// Validate file path for security
+	if err := validateConfigFilePath(path); err != nil {
+		return &ConfigError{
+			Type:    "parse_error",
+			Path:    path,
+			Message: "invalid file path",
+			Cause:   err,
+		}
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return &ConfigError{
 			Type:    "parse_error",
@@ -131,4 +143,41 @@ func (l *Loader) SetAWSClient(awsClient *aws.ParameterStoreClient) {
 	l.awsClient = awsClient
 	l.resolver = NewResolver(l.awsClient, l.stageResolver)
 	l.parser = NewParser(l.resolver)
+}
+
+func validateConfigFilePath(path string) error {
+	// Clean and validate the path
+	cleanPath := filepath.Clean(path)
+	
+	// Check for path traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("path traversal not allowed")
+	}
+	
+	// Ensure absolute path or relative path in current directory
+	if !filepath.IsAbs(cleanPath) {
+		// Convert to absolute path to validate
+		absPath, err := filepath.Abs(cleanPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve absolute path: %w", err)
+		}
+		cleanPath = absPath
+	}
+	
+	// Check file extension for additional safety
+	ext := filepath.Ext(cleanPath)
+	allowedExts := []string{".yaml", ".yml", ".json"}
+	validExt := false
+	for _, allowed := range allowedExts {
+		if strings.EqualFold(ext, allowed) {
+			validExt = true
+			break
+		}
+	}
+	
+	if !validExt {
+		return fmt.Errorf("unsupported file extension: %s (allowed: .yaml, .yml, .json)", ext)
+	}
+	
+	return nil
 }

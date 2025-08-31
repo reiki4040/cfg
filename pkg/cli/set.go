@@ -155,19 +155,31 @@ func promptForValue(parameterPath string, isSecret bool) (string, error) {
 	fmt.Printf("Enter value for parameter %s: ", parameterPath)
 
 	if isSecret {
+		// Validate terminal state for secure input
+		if !term.IsTerminal(int(syscall.Stdin)) {
+			return "", fmt.Errorf("secure input requires an interactive terminal")
+		}
+		
 		// Hide input for secure strings
 		byteValue, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to read secure input: %w", err)
 		}
 		fmt.Println() // Print newline after hidden input
-		return string(byteValue), nil
+		
+		// Validate minimum length for security
+		value := string(byteValue)
+		if len(value) == 0 {
+			return "", fmt.Errorf("secure parameter value cannot be empty")
+		}
+		
+		return value, nil
 	} else {
 		// Normal input for non-secure strings
 		reader := bufio.NewReader(os.Stdin)
 		value, err := reader.ReadString('\n')
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to read input: %w", err)
 		}
 		return strings.TrimSpace(value), nil
 	}

@@ -21,6 +21,12 @@ func NewParser(resolver *Resolver) *Parser {
 }
 
 func (p *Parser) ParseAndInterpolate(ctx context.Context, yamlData []byte) (map[string]interface{}, error) {
+	// Validate input size to prevent YAML bomb attacks
+	const maxYAMLSize = 10 * 1024 * 1024 // 10MB limit
+	if len(yamlData) > maxYAMLSize {
+		return nil, fmt.Errorf("YAML input too large: %d bytes (max: %d)", len(yamlData), maxYAMLSize)
+	}
+
 	// First parse YAML into map
 	var data map[string]interface{}
 	if err := yaml.Unmarshal(yamlData, &data); err != nil {

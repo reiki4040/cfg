@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -107,18 +106,9 @@ func runDiffPsCommand(cmd *cobra.Command, args []string) error {
 	// Create second AWS client for comparison if different profile specified
 	var compareAWSClient *aws.ParameterStoreClient
 	if diffCompareProfile != "" {
-		// Temporarily set profile for comparison client
-		originalProfile := os.Getenv("AWS_PROFILE")
-		os.Setenv("AWS_PROFILE", diffCompareProfile)
-		compareAWSClient, err = aws.NewParameterStoreClient(context.Background(), awsRegion)
+		compareAWSClient, err = aws.NewParameterStoreClientWithProfile(context.Background(), awsRegion, diffCompareProfile)
 		if err != nil {
 			return fmt.Errorf("failed to create comparison AWS client with profile %s: %w", diffCompareProfile, err)
-		}
-		// Restore original profile
-		if originalProfile != "" {
-			os.Setenv("AWS_PROFILE", originalProfile)
-		} else {
-			os.Unsetenv("AWS_PROFILE")
 		}
 	} else {
 		compareAWSClient = awsClient

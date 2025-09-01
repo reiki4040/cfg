@@ -9,10 +9,11 @@ import (
 )
 
 type CfgctlConfig struct {
-	DefaultRegion string                    `yaml:"default_region"`
-	DefaultStage  string                    `yaml:"default_stage"`
-	PathPrefix    string                    `yaml:"path_prefix"`
-	KMSKeys       map[string]RegionKMSKeys  `yaml:"kms_keys"`
+	DefaultRegion      string                    `yaml:"default_region"`
+	DefaultStage       string                    `yaml:"default_stage"`
+	PathPrefix         string                    `yaml:"path_prefix"`
+	KMSKeys            map[string]RegionKMSKeys  `yaml:"kms_keys"`
+	StagePrefixBlanks  []string                  `yaml:"stage_prefix_blanks"`
 }
 
 type RegionKMSKeys struct {
@@ -42,10 +43,11 @@ func loadConfig() (*CfgctlConfig, error) {
 	// If config file doesn't exist, return default config
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		globalConfig = &CfgctlConfig{
-			DefaultRegion: "us-east-1",
-			DefaultStage:  "dev",
-			PathPrefix:    "/app",
-			KMSKeys:       make(map[string]RegionKMSKeys),
+			DefaultRegion:     "us-east-1",
+			DefaultStage:      "dev",
+			PathPrefix:        "/app",
+			KMSKeys:           make(map[string]RegionKMSKeys),
+			StagePrefixBlanks: []string{"prod"},
 		}
 		return globalConfig, nil
 	}
@@ -170,5 +172,28 @@ func setPathPrefix(prefix string) error {
 	}
 
 	config.PathPrefix = prefix
+	return saveConfig(config)
+}
+
+func getStagePrefixBlanks() []string {
+	config, err := loadConfig()
+	if err != nil {
+		return []string{"prod"}
+	}
+
+	if config.StagePrefixBlanks == nil {
+		return []string{"prod"}
+	}
+
+	return config.StagePrefixBlanks
+}
+
+func setStagePrefixBlanks(stages []string) error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
+	config.StagePrefixBlanks = stages
 	return saveConfig(config)
 }

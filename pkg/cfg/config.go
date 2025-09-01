@@ -18,9 +18,10 @@ type Loader struct {
 }
 
 type LoadOptions struct {
-	Stage     string
-	AWSRegion string
-	Profile   string
+	Stage             string
+	AWSRegion         string
+	Profile           string
+	StagePrefixBlanks []string
 }
 
 type ConfigError struct {
@@ -47,7 +48,7 @@ func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 		options = opts[0]
 	}
 
-	stageResolver := NewStageResolver(options.Stage)
+	stageResolver := NewStageResolverWithPrefixBlanks(options.Stage, options.StagePrefixBlanks)
 	
 	var awsClient *aws.ParameterStoreClient
 	var err error
@@ -130,9 +131,21 @@ func (l *Loader) LoadFromBytes(data []byte, target interface{}) error {
 }
 
 func (l *Loader) SetStage(stage string) {
-	l.stageResolver = NewStageResolver(stage)
+	// Preserve existing stagePrefixBlanks configuration
+	var stagePrefixBlanks []string
+	for s := range l.stageResolver.stagePrefixBlanks {
+		stagePrefixBlanks = append(stagePrefixBlanks, s)
+	}
+	l.stageResolver = NewStageResolverWithPrefixBlanks(stage, stagePrefixBlanks)
 	l.resolver = NewResolver(l.awsClient, l.stageResolver)
 	l.parser = NewParser(l.resolver)
+}
+
+func getStagePrefixBlanksFromOptions(stagePrefixBlanks []string) []string {
+	if stagePrefixBlanks == nil {
+		return []string{"prod"}
+	}
+	return stagePrefixBlanks
 }
 
 func (l *Loader) GetStage() string {

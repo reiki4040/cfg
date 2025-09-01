@@ -1,6 +1,10 @@
 app:
   name: "${env:APP_NAME}-{stage}"
   debug: ${env:DEBUG}
-  api_url: ${ps:/app/{stage}/app/app_url}
+  api_url: ${ps:/app/{stage}/app/api_url}
   timeout: 30
   secret: ${ps:/cfgtool/{stage}/app1/himitsu}
+
+domain:
+  api: "${stage-prefix:api}.example.com"
+  web: "${stage-prefix:web}.mycompany.com"

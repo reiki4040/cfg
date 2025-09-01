@@ -43,7 +43,8 @@ func createAWSClient() (*aws.ParameterStoreClient, error) {
 }
 
 func createStageResolver() *cfg.StageResolver {
-	return cfg.NewStageResolver(stage)
+	stagePrefixBlanks := getStagePrefixBlanks()
+	return cfg.NewStageResolverWithPrefixBlanks(stage, stagePrefixBlanks)
 }
 
 func resolveParameterPath(path string, stageResolver *cfg.StageResolver) string {

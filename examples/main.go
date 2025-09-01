@@ -15,6 +15,10 @@ type Config struct {
 		Timeout int    `yaml:"app.timeout"`
 		Secret  string `yaml:"app.secret"`
 	}
+	Domain struct {
+		Api string `yaml:"domain.api"`
+		Web string `yaml:"domain.web"`
+	}
 }
 
 func main() {
@@ -23,6 +27,7 @@ func main() {
 	loader := cfg.New(cfg.LoadOptions{
 		Stage:     "dev",
 		AWSRegion: "ap-northeast-1",
+		StagePrefixBlanks: []string{"prod"},
 	})
 
 	err := loader.LoadFromFile("config.yaml", &config)
@@ -35,4 +40,7 @@ func main() {
 	fmt.Printf("Debug Mode: %t\n", config.App.Debug)
 	fmt.Printf("Timeout: %d\n", config.App.Timeout)
 	fmt.Printf("Secret: %s\n", config.App.Secret)
+
+	fmt.Printf("API domain: %s\n", config.Domain.Api)
+	fmt.Printf("Web domain: %s\n", config.Domain.Web)
 }

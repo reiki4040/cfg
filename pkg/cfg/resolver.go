@@ -11,12 +11,13 @@ import (
 )
 
 var (
-	psReferenceRegex  = regexp.MustCompile(`\$\{ps:([^$]*)\}`)
-	envReferenceRegex = regexp.MustCompile(`\$\{env:([^}]+)\}`)
+	psReferenceRegex          = regexp.MustCompile(`\$\{ps:([^$]*)\}`)
+	envReferenceRegex         = regexp.MustCompile(`\$\{env:([^}]+)\}`)
+	stagePrefixReferenceRegex = regexp.MustCompile(`\$\{stage-prefix:([^}]+)\}`)
 )
 
 type Reference struct {
-	Type string // "ps" or "env"
+	Type string // "ps", "env", or "stage-prefix"
 	Key  string
 	Raw  string
 }
@@ -83,6 +84,18 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 		}
 	}
 
+	// Extract stage-prefix references
+	stagePrefixMatches := stagePrefixReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
+	for _, match := range stagePrefixMatches {
+		if len(match) >= 2 {
+			references = append(references, Reference{
+				Type: "stage-prefix",
+				Key:  match[1],
+				Raw:  match[0],
+			})
+		}
+	}
+
 	return references
 }
 
@@ -107,6 +120,16 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 			} else {
 				return nil, fmt.Errorf("environment variable %s not found", ref.Key)
 			}
+		case "stage-prefix":
+			// Resolve stage-prefix immediately
+			var stagePrefix string
+			if r.stageResolver.stagePrefixBlanks[r.stageResolver.stage] {
+				stagePrefix = ""
+			} else {
+				stagePrefix = r.stageResolver.stage + "-"
+			}
+			stagePrefixValue := stagePrefix + ref.Key
+			values[ref.Raw] = stagePrefixValue
 		}
 	}
 

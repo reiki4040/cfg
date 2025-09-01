@@ -108,9 +108,10 @@ func (p *ParameterStoreClient) getParametersBatch(ctx context.Context, names []s
 		results[*param.Name] = *param.Value
 	}
 
-	// Log missing parameters but don't fail - let application handle missing values
+	// Log missing parameters and return error if any are missing
 	if len(result.InvalidParameters) > 0 {
-		fmt.Printf("Warning: Parameters not found in Parameter Store: %s\n", strings.Join(result.InvalidParameters, ", "))
+		fmt.Printf("Error: Parameters not found in Parameter Store: %s\n", strings.Join(result.InvalidParameters, ", "))
+		return results, fmt.Errorf("missing parameters in Parameter Store: %s", strings.Join(result.InvalidParameters, ", "))
 	}
 
 	return results, nil

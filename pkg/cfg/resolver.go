@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	psReferenceRegex  = regexp.MustCompile(`\$\{ps:([^}]+)\}`)
+	psReferenceRegex  = regexp.MustCompile(`\$\{ps:([^$]*)\}`)
 	envReferenceRegex = regexp.MustCompile(`\$\{env:([^}]+)\}`)
 )
 
@@ -96,6 +96,7 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 	for _, ref := range refs {
 		switch ref.Type {
 		case "ps":
+			// ref.Key is already resolved by ExtractReferences
 			if _, exists := r.cache[ref.Key]; !exists {
 				psKeys = append(psKeys, ref.Key)
 			}
@@ -127,7 +128,8 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 		if cachedValue, exists := r.cache[key]; exists {
 			values[ref.Raw] = cachedValue
 		} else if r.psClient != nil {
-			return nil, fmt.Errorf("parameter %s not found in Parameter Store", key)
+			// Use empty string for missing parameters instead of failing
+			values[ref.Raw] = ""
 		}
 	}
 

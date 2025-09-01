@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yourusername/cfg/pkg/cli"
+	"github.com/yourusername/cfg/cli"
 )
 
 func main() {

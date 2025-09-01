@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yourusername/cfg/pkg/aws"
+	"github.com/yourusername/cfg/aws"
 )
 
 type Loader struct {

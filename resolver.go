@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yourusername/cfg/pkg/aws"
+	"github.com/yourusername/cfg/aws"
 )
 
 var (

@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/cfg/pkg/aws"
-	"github.com/yourusername/cfg/pkg/cfg"
+	"github.com/yourusername/cfg/aws"
+	"github.com/yourusername/cfg"
 )
 
 var diffCmd = &cobra.Command{

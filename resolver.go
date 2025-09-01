@@ -104,7 +104,7 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 
 	// Group Parameter Store references for batch retrieval
 	var psKeys []string
-	psRefMap := make(map[string]Reference)
+	psRefMap := make(map[string][]Reference)
 	
 	for _, ref := range refs {
 		switch ref.Type {
@@ -113,7 +113,7 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 			if _, exists := r.cache[ref.Key]; !exists {
 				psKeys = append(psKeys, ref.Key)
 			}
-			psRefMap[ref.Key] = ref
+			psRefMap[ref.Key] = append(psRefMap[ref.Key], ref)
 		case "env":
 			if envValue, exists := r.envVars[ref.Key]; exists {
 				values[ref.Raw] = envValue
@@ -147,12 +147,17 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 	}
 
 	// Map Parameter Store values to raw references
-	for key, ref := range psRefMap {
+	for key, refs := range psRefMap {
 		if cachedValue, exists := r.cache[key]; exists {
-			values[ref.Raw] = cachedValue
+			// Map the same value to all references with this key
+			for _, ref := range refs {
+				values[ref.Raw] = cachedValue
+			}
 		} else if r.psClient != nil {
 			// Use empty string for missing parameters instead of failing
-			values[ref.Raw] = ""
+			for _, ref := range refs {
+				values[ref.Raw] = ""
+			}
 		}
 	}
 

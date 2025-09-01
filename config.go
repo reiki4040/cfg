@@ -50,6 +50,9 @@ func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 
 	stageResolver := NewStageResolverWithPrefixBlanks(options.Stage, options.StagePrefixBlanks)
 	
+	// Resolve {stage} placeholder in path prefix
+	resolvedPathPrefix := stageResolver.ResolvePath(pathPrefix)
+	
 	var awsClient *aws.ParameterStoreClient
 	var err error
 	
@@ -62,7 +65,7 @@ func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 		}
 	}
 
-	resolver := NewResolverWithPrefix(awsClient, stageResolver, pathPrefix)
+	resolver := NewResolverWithPrefix(awsClient, stageResolver, resolvedPathPrefix)
 	parser := NewParser(resolver)
 
 	return &Loader{

@@ -1,9 +1,9 @@
 app:
-  name: "${env:APP_NAME}-{stage}"
+  name: "${env:APP_NAME}-{stage}-${ps:app/api_url}"
   debug: ${env:DEBUG}
-  api_url: ${ps:{stage}/app/api_url}
+  api_url: ${ps:app/api_url}
   timeout: 30
-  secret: ${ps:{stage}/app1/himitsu}
+  secret: "${ps:app1/himitsu}"
 
 domain:
   api: "${stage-prefix:api}.example.com"

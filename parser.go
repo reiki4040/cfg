@@ -88,28 +88,35 @@ func mapToStruct(data map[string]interface{}, target interface{}, prefix string)
 			continue
 		}
 
-		// Get cfg tag
+		// Get yaml tag (prioritize yaml over cfg for backward compatibility)
+		yamlTag := fieldType.Tag.Get("yaml")
 		cfgTag := fieldType.Tag.Get("cfg")
-		if cfgTag == "" {
+		
+		var tag string
+		if yamlTag != "" {
+			tag = yamlTag
+		} else if cfgTag != "" {
+			tag = cfgTag
+		} else {
 			// If no tag, use field name in lowercase
-			cfgTag = strings.ToLower(fieldType.Name)
-			if prefix != "" {
-				cfgTag = prefix + "." + cfgTag
-			}
-		} else if prefix != "" && !strings.Contains(cfgTag, ".") {
-			cfgTag = prefix + "." + cfgTag
+			tag = strings.ToLower(fieldType.Name)
+		}
+		
+		// Apply prefix if needed
+		if prefix != "" && !strings.Contains(tag, ".") {
+			tag = prefix + "." + tag
 		}
 
 		// Handle nested structs
 		if field.Kind() == reflect.Struct {
-			if err := mapToStruct(data, field.Addr().Interface(), cfgTag); err != nil {
+			if err := mapToStruct(data, field.Addr().Interface(), tag); err != nil {
 				return err
 			}
 			continue
 		}
 
 		// Get value from data map
-		value, err := getValueFromPath(data, cfgTag)
+		value, err := getValueFromPath(data, tag)
 		if err != nil {
 			continue // Skip missing values
 		}

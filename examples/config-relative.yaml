@@ -1,16 +1,10 @@
-database:
-  host: ${ps:{stage}/db/host}
-  password: ${ps:{stage}/db/password}
-  port: ${env:DB_PORT}
-  name: "myapp"
-  url: "postgres://${ps:{stage}/db/host}:${env:DB_PORT}/myapp"
-
 app:
   name: "${env:APP_NAME}-{stage}"
   debug: ${env:DEBUG}
-  api_url: "https://api-{stage}.example.com"
+  api_url: ${ps:{stage}/app/api_url}
   timeout: 30
+  secret: ${ps:{stage}/app1/himitsu}
 
-redis:
-  url: ${ps:shared/{stage}/redis/url}
-  password: ${ps:shared/{stage}/redis/password}
+domain:
+  api: "${stage-prefix:api}.example.com"
+  web: "${stage-prefix:web}.mycompany.com"

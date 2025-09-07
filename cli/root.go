@@ -15,6 +15,7 @@ var (
 	stage     string
 	awsRegion string
 	awsProfile string
+	showVersion bool
 )
 
 var rootCmd = &cobra.Command{
@@ -23,6 +24,17 @@ var rootCmd = &cobra.Command{
 	Long: `cfgctl is a CLI tool for managing application configuration across environments.
 It supports AWS Parameter Store integration, environment-specific settings,
 and YAML-based configuration management.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if showVersion {
+			if GetVersionString != nil {
+				fmt.Println(GetVersionString())
+			} else {
+				fmt.Println("Version information not available")
+			}
+			return
+		}
+		cmd.Help()
+	},
 }
 
 func Execute() error {
@@ -36,6 +48,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&stage, "stage", defaultStage, "Configuration stage (dev, stg, prod)")
 	rootCmd.PersistentFlags().StringVar(&awsRegion, "region", defaultRegion, "AWS region")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "profile", "", "AWS profile")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information")
 }
 
 func createAWSClient() (*aws.ParameterStoreClient, error) {

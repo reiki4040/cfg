@@ -40,7 +40,7 @@ type Config struct {
 
 func main() {
     var config Config
-    
+
     loader := cfg.New(cfg.LoadOptions{
         Stage: "prod",
     })
@@ -48,7 +48,7 @@ func main() {
     if err != nil {
         panic(err)
     }
-    
+
     fmt.Println(config.App.Name)
 }
 ```
@@ -191,7 +191,7 @@ cfgctl delete {stage}/db/old_param --stage=prod
 #### パラメータタイプ指定
 
 - `-S` または `--string`: String型
-- `--SS`: SecureString型  
+- `--SS`: SecureString型
 - `--SL`: StringList型
 - `--type=string`: 従来形式（lowercase対応）
 

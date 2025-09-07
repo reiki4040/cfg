@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/yourusername/cfg"
+	"github.com/reiki4040/cfg"
 )
 
 type Config struct {

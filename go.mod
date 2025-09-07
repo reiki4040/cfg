@@ -1,4 +1,4 @@
-module github.com/yourusername/cfg
+module github.com/reiki4040/cfg
 
 go 1.21
 

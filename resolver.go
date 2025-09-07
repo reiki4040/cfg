@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	psReferenceRegex          = regexp.MustCompile(`\$\{ps:([^$]*)\}`)
+	psReferenceRegex          = regexp.MustCompile(`\$\{ps:((?:[^{}]|\{[^}]*\})*)\}`)
 	envReferenceRegex         = regexp.MustCompile(`\$\{env:([^}]+)\}`)
 	stagePrefixReferenceRegex = regexp.MustCompile(`\$\{stage-prefix:([^}]+)\}`)
 )

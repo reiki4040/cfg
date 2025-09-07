@@ -52,16 +52,27 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 	for _, match := range psMatches {
 		if len(match) >= 2 {
 			path := match[1]
-			// Apply path prefix if path doesn't start with /
-			if r.pathPrefix != "" && !strings.HasPrefix(path, "/") {
-				// Ensure path prefix starts with /
+			// Apply path prefix if configured
+			if r.pathPrefix != "" {
+				// Normalize prefix to ensure it starts with / and doesn't end with /
 				prefix := r.pathPrefix
 				if !strings.HasPrefix(prefix, "/") {
 					prefix = "/" + prefix
 				}
-				// Ensure path prefix doesn't end with /
 				prefix = strings.TrimSuffix(prefix, "/")
-				path = prefix + "/" + path
+				
+				// For paths starting with /, combine prefix + path
+				// For relative paths, treat them as absolute within the prefix
+				if strings.HasPrefix(path, "/") {
+					path = prefix + path
+				} else {
+					path = prefix + "/" + path
+				}
+			} else {
+				// No prefix configured, ensure path starts with /
+				if !strings.HasPrefix(path, "/") {
+					path = "/" + path
+				}
 			}
 			key := r.stageResolver.ResolvePath(path)
 			references = append(references, Reference{

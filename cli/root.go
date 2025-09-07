@@ -48,25 +48,35 @@ func createStageResolver() *cfg.StageResolver {
 }
 
 func resolveParameterPath(path string, stageResolver *cfg.StageResolver) string {
-	// Apply path prefix if path doesn't start with /
-	if !strings.HasPrefix(path, "/") {
-		pathPrefix := getPathPrefix()
-		if pathPrefix != "" {
-			// Ensure path prefix starts with /
-			if !strings.HasPrefix(pathPrefix, "/") {
-				pathPrefix = "/" + pathPrefix
-			}
-			// Ensure path prefix doesn't end with /
-			pathPrefix = strings.TrimSuffix(pathPrefix, "/")
-			
-			// If path prefix contains {stage} placeholder, resolve it first
-			if strings.Contains(pathPrefix, "{stage}") {
-				pathPrefix = stageResolver.ResolvePath(pathPrefix)
-			}
-			
+	pathPrefix := getPathPrefix()
+	
+	// Apply path prefix if configured
+	if pathPrefix != "" {
+		// Normalize prefix to ensure it starts with / and doesn't end with /
+		if !strings.HasPrefix(pathPrefix, "/") {
+			pathPrefix = "/" + pathPrefix
+		}
+		pathPrefix = strings.TrimSuffix(pathPrefix, "/")
+		
+		// If path prefix contains {stage} placeholder, resolve it first
+		if strings.Contains(pathPrefix, "{stage}") {
+			pathPrefix = stageResolver.ResolvePath(pathPrefix)
+		}
+		
+		// For paths starting with /, combine prefix + path
+		// For relative paths, treat them as absolute within the prefix
+		if strings.HasPrefix(path, "/") {
+			path = pathPrefix + path
+		} else {
 			path = pathPrefix + "/" + path
 		}
+	} else {
+		// No prefix configured, ensure path starts with /
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
 	}
+	
 	return stageResolver.ResolvePath(path)
 }
 

@@ -12,51 +12,20 @@ import (
 )
 
 var diffCmd = &cobra.Command{
-	Use:   "diff <subcommand>",
-	Short: "Compare configurations",
-	Long: `Compare configurations between Parameter Store, files, or stages.
-
-Available subcommands:
-  ps     - Compare Parameter Store between stages
-  config - Compare config file with Parameter Store
-  file   - Compare two config files`,
-}
-
-var diffPsCmd = &cobra.Command{
-	Use:   "ps",
+	Use:   "diff",
 	Short: "Compare Parameter Store between stages",
 	Long: `Compare Parameter Store parameters between stages.
 
 Examples:
-  cfgctl diff ps --stage=dev --compare-stage=stg --path=/app/
-  cfgctl diff ps --stages=dev,stg,prod --path=/app/
-  cfgctl diff ps --stage=dev --compare-stage=stg --keys-only
-  cfgctl diff ps --stage=dev --compare-stage=stg --show-secrets
-  cfgctl diff ps --stage=dev --compare-stage=stg --compare-profile=prod-profile`,
+  cfgctl diff --stage=dev --compare-stage=stg --path=/app/
+  cfgctl diff --stages=dev,stg,prod --path=/app/
+  cfgctl diff --stage=dev --compare-stage=stg --keys-only
+  cfgctl diff --stage=dev --compare-stage=stg --show-secrets
+  cfgctl diff --stage=dev --compare-stage=stg --compare-profile=prod-profile`,
 	RunE: runDiffPsCommand,
 }
 
-var diffConfigCmd = &cobra.Command{
-	Use:   "config <config-file>",
-	Short: "Compare config file with Parameter Store",
-	Long: `Compare configuration file with current Parameter Store values.
 
-Examples:
-  cfgctl diff config config.yaml --stage=prod`,
-	Args: cobra.ExactArgs(1),
-	RunE: runDiffConfigCommand,
-}
-
-var diffFileCmd = &cobra.Command{
-	Use:   "file <file1> <file2>",
-	Short: "Compare two config files",
-	Long: `Compare two configuration files.
-
-Examples:
-  cfgctl diff file config.dev.yaml config.prod.yaml`,
-	Args: cobra.ExactArgs(2),
-	RunE: runDiffFileCommand,
-}
 
 var (
 	diffCompareStage string
@@ -69,16 +38,13 @@ var (
 
 func init() {
 	rootCmd.AddCommand(diffCmd)
-	diffCmd.AddCommand(diffPsCmd)
-	diffCmd.AddCommand(diffConfigCmd)
-	diffCmd.AddCommand(diffFileCmd)
 
-	diffPsCmd.Flags().StringVar(&diffCompareStage, "compare-stage", "", "Stage to compare with")
-	diffPsCmd.Flags().StringVar(&diffStages, "stages", "", "Comma-separated list of stages to compare")
-	diffPsCmd.Flags().StringVar(&diffPath, "path", "", "Parameter path to compare (default: path prefix)")
-	diffPsCmd.Flags().BoolVar(&diffKeysOnly, "keys-only", false, "Show only parameter names without values")
-	diffPsCmd.Flags().BoolVar(&diffShowSecrets, "show-secrets", false, "Show SecureString parameter values (DANGEROUS)")
-	diffPsCmd.Flags().StringVar(&diffCompareProfile, "compare-profile", "", "AWS profile for comparison target")
+	diffCmd.Flags().StringVar(&diffCompareStage, "compare-stage", "", "Stage to compare with")
+	diffCmd.Flags().StringVar(&diffStages, "stages", "", "Comma-separated list of stages to compare")
+	diffCmd.Flags().StringVar(&diffPath, "path", "", "Parameter path to compare (default: path prefix)")
+	diffCmd.Flags().BoolVar(&diffKeysOnly, "keys-only", false, "Show only parameter names without values")
+	diffCmd.Flags().BoolVar(&diffShowSecrets, "show-secrets", false, "Show SecureString parameter values (DANGEROUS)")
+	diffCmd.Flags().StringVar(&diffCompareProfile, "compare-profile", "", "AWS profile for comparison target")
 }
 
 func runDiffPsCommand(cmd *cobra.Command, args []string) error {
@@ -183,24 +149,6 @@ func runMultiStageDiff() error {
 	return nil
 }
 
-func runDiffConfigCommand(cmd *cobra.Command, args []string) error {
-	configFile := args[0]
-
-	fmt.Printf("Config vs Parameter Store comparison not fully implemented yet.\n")
-	fmt.Printf("Config file: %s, Stage: %s\n", configFile, stage)
-	
-	return nil
-}
-
-func runDiffFileCommand(cmd *cobra.Command, args []string) error {
-	file1 := args[0]
-	file2 := args[1]
-
-	fmt.Printf("File comparison not fully implemented yet.\n")
-	fmt.Printf("Comparing: %s vs %s\n", file1, file2)
-	
-	return nil
-}
 
 func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, paramInfos2 []aws.ParameterInfo, path string, keysOnly bool, showSecrets bool) {
 	// Create maps organized by normalized key (removing stage-specific parts)

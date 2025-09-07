@@ -9,9 +9,14 @@
 - **設定**: 設定ファイル内で`${ps:/cfgtool/{stage}/...}`形式で絶対パスを指定
 - **用途**: Parameter Storeのパス構造が明確な場合
 
-### 2. main-relative.go + config-relative.yaml (相対パス + path prefix例)
-- **特徴**: path prefixと相対パスの組み合わせを使用
-- **設定**: `NewWithPrefix("/cfgtool/{stage}", ...)`でpath prefixを指定し、設定ファイルでは`${ps:app/api_url}`のような相対パスを使用
+### 2. main-relative.go + config-relative.yaml (path prefix例)
+- **特徴**: path prefixを使用してパスを自動的に結合
+- **設定**: `NewWithPrefix("/cfgtool/{stage}", ...)`でpath prefixを指定
+- **パス結合ルール**:
+  - `/`始まりのパス: `prefix + path` で結合
+  - `${ps:/app/api_url}` → `/cfgtool/{stage}/app/api_url`
+  - 相対パス: `prefix + "/" + path` で結合
+  - `${ps:app/api_url}` → `/cfgtool/{stage}/app/api_url`
 - **用途**: 複数のアプリケーションで共通のParameter Store階層を使用する場合
 
 ## 実行に必要なParameter Store設定
@@ -88,6 +93,9 @@ Web domain: dev-web.mycompany.com
 この例では以下の機能が確認できます：
 
 - **Parameter Store統合**: `${ps:...}`記法でParameter Storeから値を取得
+- **Path Prefix機能**: prefixを使用した柔軟なパス管理
+  - `/`始まりのパス: `prefix + path` で自動結合
+  - 相対パス: `prefix + "/" + path` で自動結合
 - **環境変数統合**: `${env:...}`記法で環境変数から値を取得
 - **stage-prefix機能**: `${stage-prefix:...}`記法でstage別のプレフィックス生成
 - **Stage解決**: `{stage}`プレースホルダーでstage別のパス生成

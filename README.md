@@ -23,7 +23,7 @@ package main
 
 import (
     "fmt"
-    "github.com/yourusername/cfg/pkg/cfg"
+    "github.com/reiki4040/cfg"
 )
 
 type Config struct {
@@ -75,11 +75,11 @@ redis:
   password: ${ps:/shared/{stage}/redis/password}
 ```
 
-**config-relative.yaml (相対パス形式 - path prefix使用)**
+**config-relative.yaml (path prefix使用)**
 ```yaml
 database:
-  host: ${ps:{stage}/db/host}
-  password: ${ps:{stage}/db/password}
+  host: ${ps:/{stage}/db/host}
+  password: ${ps:/{stage}/db/password}
   port: ${env:DB_PORT}
   name: "myapp"
 
@@ -89,13 +89,15 @@ app:
   timeout: 30
 
 redis:
-  url: ${ps:shared/{stage}/redis/url}
-  password: ${ps:shared/{stage}/redis/password}
+  url: ${ps:/shared/{stage}/redis/url}
+  password: ${ps:/shared/{stage}/redis/password}
 ```
 
 ### 特殊記法
 
-- **Parameter Store参照**: `${ps:/path/to/parameter}` または `${ps:relative/path}`
+- **Parameter Store参照**: `${ps:/path/to/parameter}`
+  - path prefixなし: そのまま使用
+  - path prefixあり: `prefix + path` で結合
 - **環境変数参照**: `${env:VARIABLE_NAME}`
 - **Stage プレースホルダー**: `{stage}` - 現在のstageに置換
 - **文字列補間**: `"prefix-${env:VAR}-{stage}-suffix"`
@@ -146,7 +148,7 @@ Parameter Storeの管理と設定値の比較を行うCLIツールです。
 ### インストール
 
 ```bash
-go install github.com/yourusername/cfg/cmd/cfgctl@latest
+go install github.com/reiki4040/cfg/cmd/cfgctl@latest
 ```
 
 ### 基本設定
@@ -200,23 +202,26 @@ cfgctl delete {stage}/db/old_param --stage=prod
 cfgctl list --stage=prod --values --show-secrets
 ```
 
-### Stage比較
+### Parameter Store比較
 
 ```bash
 # 2ステージ間の比較
-cfgctl diff ps --stage=dev --compare-stage=stg
+cfgctl diff --stage=dev --compare-stage=stg
 
 # マルチステージ比較
-cfgctl diff ps --stages=dev,stg,prod
+cfgctl diff --stages=dev,stg,prod
+
+# 特定パスの比較
+cfgctl diff --stage=dev --compare-stage=stg --path=/app/
 
 # キーのみ表示
-cfgctl diff ps --stage=dev --compare-stage=stg --keys-only
+cfgctl diff --stage=dev --compare-stage=stg --keys-only
 
 # Secret値も表示
-cfgctl diff ps --stage=dev --compare-stage=stg --show-secrets
+cfgctl diff --stage=dev --compare-stage=stg --show-secrets
 
 # 異なるプロファイルとの比較
-cfgctl diff ps --stage=dev --compare-stage=stg --compare-profile=prod-account
+cfgctl diff --stage=dev --compare-stage=stg --compare-profile=prod-account
 ```
 
 ### KMS鍵の管理
@@ -231,15 +236,15 @@ cfgctl set {stage}/api/secret --SS --kms-key=alias/custom-key
 
 ### パス管理
 
-path prefixを設定することで、相対パスを使用できます：
+path prefixを設定することで、パスの結合管理ができます：
 
 ```bash
 # path prefix設定
 cfgctl config set path_prefix /myapp
 
-# 相対パスでの操作（/myapp/{stage}/db/passwordに解決される）
-cfgctl set {stage}/db/password --SS --stage=prod
-cfgctl list {stage}/db --stage=prod
+# /始まりのパスでの操作（prefix + pathで結合: /myapp/{stage}/db/password）
+cfgctl set /{stage}/db/password --SS --stage=prod
+cfgctl list /{stage}/db --stage=prod
 ```
 
 ### 設定ファイル
@@ -269,7 +274,7 @@ kms_keys:
 | `cfgctl set` | Parameter Store値の設定 |
 | `cfgctl list` | Parameter Store値の一覧表示 |
 | `cfgctl delete` | Parameter Store値の削除 |
-| `cfgctl diff ps` | Parameter Store値の比較 |
+| `cfgctl diff` | Parameter Store値の比較 |
 
 ### セキュリティ
 

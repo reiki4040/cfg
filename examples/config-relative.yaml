@@ -1,9 +1,14 @@
+# Example configuration using relative paths with prefix
+# This config assumes a prefix like "/cfgtool/{stage}" is configured
+# Paths starting with / will be combined with prefix: prefix + path
+# Relative paths will be treated as: prefix + "/" + path
+
 app:
-  name: "${env:APP_NAME}-{stage}-${ps:app/api_url}"
+  name: "${env:APP_NAME}-{stage}-${ps:/app/name2}"
   debug: ${env:DEBUG}
-  api_url: ${ps:app/api_url}
+  api_url: ${ps:/app/api_url}
   timeout: 30
-  secret: "${ps:app1/himitsu}"
+  secret: "${ps:/app1/himitsu}"
 
 domain:
   api: "${stage-prefix:api}.example.com"

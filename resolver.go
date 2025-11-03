@@ -61,8 +61,12 @@ func (r *Resolver) SetLogLevel(level LogLevel) {
 func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 	var references []Reference
 
+	// Remove comments from YAML content before extracting references
+	// This prevents processing references that appear in comment lines
+	cleanedContent := removeYamlComments(yamlContent)
+
 	// Extract Parameter Store references (with JSONPath support)
-	psMatches := psReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
+	psMatches := psReferenceRegex.FindAllStringSubmatch(cleanedContent, -1)
 	for _, match := range psMatches {
 		if len(match) >= 2 {
 			rawRef := match[0]
@@ -107,8 +111,8 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 		}
 	}
 
-	// Extract environment variable references
-	envMatches := envReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
+	// Extract environment variable references (from cleaned content)
+	envMatches := envReferenceRegex.FindAllStringSubmatch(cleanedContent, -1)
 	for _, match := range envMatches {
 		if len(match) >= 2 {
 			references = append(references, Reference{
@@ -119,8 +123,8 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 		}
 	}
 
-	// Extract stage-prefix references
-	stagePrefixMatches := stagePrefixReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
+	// Extract stage-prefix references (from cleaned content)
+	stagePrefixMatches := stagePrefixReferenceRegex.FindAllStringSubmatch(cleanedContent, -1)
 	for _, match := range stagePrefixMatches {
 		if len(match) >= 2 {
 			references = append(references, Reference{
@@ -267,6 +271,54 @@ func parseJSON(jsonStr string, target interface{}) error {
 // marshalJSON is a helper to marshal JSON
 func marshalJSON(data interface{}) ([]byte, error) {
 	return json.Marshal(data)
+}
+
+// removeYamlComments removes YAML comments from the content
+// This prevents references (like ${ps:...}) in comment lines from being processed
+func removeYamlComments(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+
+	for _, line := range lines {
+		// Find the position of '#' that starts a comment
+		// Need to be careful not to remove '#' that appears in string values
+		commentPos := findCommentStart(line)
+		if commentPos >= 0 {
+			// Remove the comment part
+			line = line[:commentPos]
+		}
+		result = append(result, line)
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// findCommentStart finds the position of a YAML comment start
+// Returns -1 if no comment found, or the position of '#' if found
+func findCommentStart(line string) int {
+	inDoubleQuote := false
+	inSingleQuote := false
+
+	for i, ch := range line {
+		// Check for escaped character
+		if i > 0 && line[i-1] == '\\' {
+			continue
+		}
+
+		// Handle quote toggling
+		if ch == '"' && !inSingleQuote {
+			inDoubleQuote = !inDoubleQuote
+		} else if ch == '\'' && !inDoubleQuote {
+			inSingleQuote = !inSingleQuote
+		}
+
+		// Check for comment start (outside of quotes)
+		if ch == '#' && !inDoubleQuote && !inSingleQuote {
+			return i
+		}
+	}
+
+	return -1
 }
 
 func (r *Resolver) InterpolateString(input string, values map[string]string) string {

@@ -12,7 +12,7 @@
 
 # Example Parameter Store Setup:
 #
-# /app/{stage}/database-config contains:
+# /cfgtool/{stage}/database-config contains:
 # {
 #   "primary": {
 #     "host": "primary-db.example.com",
@@ -40,22 +40,22 @@ database:
   # Multiple references to the same parameter are deduplicated,
   # resulting in only ONE API call to Parameter Store
   primary:
-    host: ${ps:/app/{stage}/database-config:primary.host}
-    port: ${ps:/app/{stage}/database-config:primary.port}
-    username: ${ps:/app/{stage}/database-config:primary.username}
-    password: ${ps:/app/{stage}/database-config:primary.password}
+    host: ${ps:/cfgtool/{stage}/database-config:primary.host}
+    port: ${ps:/cfgtool/{stage}/database-config:primary.port}
+    username: ${ps:/cfgtool/{stage}/database-config:primary.username}
+    password: ${ps:/cfgtool/{stage}/database-config:primary.password}
 
   replica:
-    host: ${ps:/app/{stage}/database-config:replica.host}
-    port: ${ps:/app/{stage}/database-config:replica.port}
+    host: ${ps:/cfgtool/{stage}/database-config:replica.host}
+    port: ${ps:/cfgtool/{stage}/database-config:replica.port}
 
   # Pool configuration extracted from the same parameter
   pool:
-    min_connections: ${ps:/app/{stage}/database-config:pool.min_size}
-    max_connections: ${ps:/app/{stage}/database-config:pool.max_size}
-    idle_timeout_seconds: ${ps:/app/{stage}/database-config:pool.idle_timeout}
+    min_connections: ${ps:/cfgtool/{stage}/database-config:pool.min_size}
+    max_connections: ${ps:/cfgtool/{stage}/database-config:pool.max_size}
+    idle_timeout_seconds: ${ps:/cfgtool/{stage}/database-config:pool.idle_timeout}
 
-# Example Parameter: /app/{stage}/server-config
+# Example Parameter: /cfgtool/{stage}/server-config
 # {
 #   "server": {
 #     "host": "0.0.0.0",
@@ -75,27 +75,27 @@ database:
 
 server:
   # Server configuration using JSONPath
-  host: ${ps:/app/{stage}/server-config:server.host}
-  port: ${ps:/app/{stage}/server-config:server.port}
-  timeout_seconds: ${ps:/app/{stage}/server-config:server.timeout}
+  host: ${ps:/cfgtool/{stage}/server-config:server.host}
+  port: ${ps:/cfgtool/{stage}/server-config:server.port}
+  timeout_seconds: ${ps:/cfgtool/{stage}/server-config:server.timeout}
 
   # Nested TLS configuration
   tls:
-    enabled: ${ps:/app/{stage}/server-config:server.tls.enabled}
-    cert_path: ${ps:/app/{stage}/server-config:server.tls.cert_path}
-    key_path: ${ps:/app/{stage}/server-config:server.tls.key_path}
+    enabled: ${ps:/cfgtool/{stage}/server-config:server.tls.enabled}
+    cert_path: ${ps:/cfgtool/{stage}/server-config:server.tls.cert_path}
+    key_path: ${ps:/cfgtool/{stage}/server-config:server.tls.key_path}
 
 # Logging configuration
 logging:
-  level: ${ps:/app/{stage}/server-config:logging.level}
-  format: ${ps:/app/{stage}/server-config:logging.format}
+  level: ${ps:/cfgtool/{stage}/server-config:logging.level}
+  format: ${ps:/cfgtool/{stage}/server-config:logging.format}
 
 # Traditional references (no JSONPath) also supported
 # These are useful for simple string values in Parameter Store
 secrets:
   # Simple parameter without JSONPath
-  api_key: ${ps:/app/{stage}/secrets/api-key}
-  database_password: ${ps:/app/{stage}/secrets/db-password}
+  api_key: ${ps:/cfgtool/{stage}/secrets/api-key}
+  database_password: ${ps:/cfgtool/{stage}/secrets/db-password}
 
 # Environment variables can be mixed with Parameter Store references
 environment:
@@ -106,16 +106,16 @@ environment:
 # CLI Usage Examples
 #
 # 1. Get a specific JSONPath from a parameter:
-#    cfgctl get /app/prod/database-config --jsonpath=primary.host
+#    cfgctl get /cfgtool/prod/database-config --jsonpath=primary.host
 #
 # 2. Get with formatted JSON output:
-#    cfgctl get /app/prod/database-config --format=json
+#    cfgctl get /cfgtool/prod/database-config --format=json
 #
 # 3. Extract nested value:
-#    cfgctl get /app/prod/server-config --jsonpath=server.tls.cert_path
+#    cfgctl get /cfgtool/prod/server-config --jsonpath=server.tls.cert_path
 #
 # 4. Show all available keys in a parameter:
-#    cfgctl get /app/prod/server-config --format=json
+#    cfgctl get /cfgtool/prod/server-config --format=json
 #
 # 5. Load configuration file (resolves all references including JSONPath):
 #    cfgctl config load config-jsonpath.yaml --stage=prod

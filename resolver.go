@@ -2,10 +2,12 @@ package cfg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/reiki4040/cfg/aws"
 )
@@ -17,17 +19,21 @@ var (
 )
 
 type Reference struct {
-	Type string // "ps", "env", or "stage-prefix"
-	Key  string
-	Raw  string
+	Type     string // "ps", "env", or "stage-prefix"
+	Key      string // parameter path (for ps), var name (for env)
+	JSONPath string // JSONPath for ps references (optional, e.g., "parent.child.key")
+	Raw      string // original reference string
 }
 
 type Resolver struct {
-	psClient     *aws.ParameterStoreClient
-	envVars      map[string]string
-	cache        map[string]string
-	stageResolver *StageResolver
-	pathPrefix   string
+	psClient       *aws.ParameterStoreClient
+	envVars        map[string]string
+	cache          map[string]string
+	stageResolver  *StageResolver
+	pathPrefix     string
+	jsonCache      *JsonCache
+	jsonExtractor  *JsonPathExtractor
+	logger         *Logger
 }
 
 func NewResolver(psClient *aws.ParameterStoreClient, stageResolver *StageResolver) *Resolver {
@@ -41,17 +47,33 @@ func NewResolverWithPrefix(psClient *aws.ParameterStoreClient, stageResolver *St
 		cache:         make(map[string]string),
 		stageResolver: stageResolver,
 		pathPrefix:    pathPrefix,
+		jsonCache:     NewJsonCache(5 * time.Minute),
+		jsonExtractor: NewJsonPathExtractor(),
+		logger:        NewLogger(LogLevelWarn), // Default to warn level
 	}
+}
+
+// SetLogLevel sets the logging level for this resolver
+func (r *Resolver) SetLogLevel(level LogLevel) {
+	r.logger = NewLogger(level)
 }
 
 func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 	var references []Reference
 
-	// Extract Parameter Store references
+	// Extract Parameter Store references (with JSONPath support)
 	psMatches := psReferenceRegex.FindAllStringSubmatch(yamlContent, -1)
 	for _, match := range psMatches {
 		if len(match) >= 2 {
-			path := match[1]
+			rawRef := match[0]
+
+			// Use JsonPathMatcher to parse path and JSONPath
+			matcher := NewJsonPathMatcher()
+			path, jsonPath, ok := matcher.Match(rawRef)
+			if !ok {
+				continue
+			}
+
 			// Apply path prefix if configured
 			if r.pathPrefix != "" {
 				// Normalize prefix to ensure it starts with / and doesn't end with /
@@ -60,7 +82,7 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 					prefix = "/" + prefix
 				}
 				prefix = strings.TrimSuffix(prefix, "/")
-				
+
 				// For paths starting with /, combine prefix + path
 				// For relative paths, treat them as absolute within the prefix
 				if strings.HasPrefix(path, "/") {
@@ -74,11 +96,13 @@ func (r *Resolver) ExtractReferences(yamlContent string) []Reference {
 					path = "/" + path
 				}
 			}
+
 			key := r.stageResolver.ResolvePath(path)
 			references = append(references, Reference{
-				Type: "ps",
-				Key:  key,
-				Raw:  match[0],
+				Type:     "ps",
+				Key:      key,
+				JSONPath: jsonPath,
+				Raw:      rawRef,
 			})
 		}
 	}
@@ -157,12 +181,13 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 		}
 	}
 
-	// Map Parameter Store values to raw references
+	// Map Parameter Store values to raw references (with JSONPath extraction)
 	for key, refs := range psRefMap {
 		if cachedValue, exists := r.cache[key]; exists {
 			// Map the same value to all references with this key
 			for _, ref := range refs {
-				values[ref.Raw] = cachedValue
+				mappedValue := r.resolveParameterValue(key, cachedValue, ref)
+				values[ref.Raw] = mappedValue
 			}
 		} else if r.psClient != nil {
 			// Use empty string for missing parameters instead of failing
@@ -173,6 +198,75 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 	}
 
 	return values, nil
+}
+
+// resolveParameterValue resolves a parameter value, extracting JSONPath if specified
+func (r *Resolver) resolveParameterValue(paramKey string, paramValue string, ref Reference) string {
+	// If no JSONPath, return the full value
+	if ref.JSONPath == "" {
+		return paramValue
+	}
+
+	r.logger.LogReferenceFetch(paramKey, ref.JSONPath)
+
+	// Try to extract from cached JSON first
+	if jsonObj, exists := r.jsonCache.Get(paramKey); exists {
+		r.logger.LogCacheHit(paramKey)
+		// Extract the specific key path from cached JSON
+		result, err := r.extractJsonPathFromCached(paramKey, jsonObj, ref.JSONPath)
+		if err == nil {
+			r.logger.LogJsonValueExtracted(paramKey, ref.JSONPath)
+			return result
+		}
+		// If extraction fails, fall back to trying to parse the value
+		r.logger.LogError(paramKey, ref.JSONPath, err)
+	}
+
+	r.logger.LogCacheMiss(paramKey)
+
+	// Try to parse the parameter value as JSON and extract
+	r.logger.LogJsonParsing(paramKey, len(paramValue))
+	result, jpeErr := r.jsonExtractor.ExtractValue(paramValue, ref.JSONPath, paramKey)
+	if jpeErr == nil {
+		// Cache the parsed JSON for future use
+		var jsonObj map[string]interface{}
+		if parseErr := parseJSON(paramValue, &jsonObj); parseErr == nil {
+			r.jsonCache.Set(paramKey, jsonObj)
+		}
+		r.logger.LogJsonValueExtracted(paramKey, ref.JSONPath)
+		return result
+	}
+
+	// If JSONPath extraction fails, log error and return empty string
+	switch jpeErr.Type {
+	case "key_not_found":
+		r.logger.LogKeyNotFound(paramKey, ref.JSONPath, jpeErr.AvailableKeys)
+	case "type_mismatch":
+		r.logger.LogTypeMismatch(paramKey, ref.JSONPath, jpeErr.ExpectedType, jpeErr.ActualType)
+	case "parse_error":
+		r.logger.LogParseFailure(paramKey, jpeErr)
+	}
+	r.logger.LogError(paramKey, ref.JSONPath, jpeErr)
+	return ""
+}
+
+// extractJsonPathFromCached extracts a value from a cached JSON object
+func (r *Resolver) extractJsonPathFromCached(paramKey string, jsonObj map[string]interface{}, jsonPath string) (string, *JSONPathError) {
+	// For cached JSON, we need to convert it back to string and use the extractor
+	// Or we can implement direct extraction from the map
+	// For simplicity, we'll use the extractor which handles all the logic
+	jsonBytes, _ := marshalJSON(jsonObj)
+	return r.jsonExtractor.ExtractValue(string(jsonBytes), jsonPath, paramKey)
+}
+
+// parseJSON is a helper to parse JSON string
+func parseJSON(jsonStr string, target interface{}) error {
+	return json.Unmarshal([]byte(jsonStr), target)
+}
+
+// marshalJSON is a helper to marshal JSON
+func marshalJSON(data interface{}) ([]byte, error) {
+	return json.Marshal(data)
 }
 
 func (r *Resolver) InterpolateString(input string, values map[string]string) string {

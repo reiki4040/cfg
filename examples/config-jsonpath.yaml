@@ -1,0 +1,121 @@
+# JSONPath Example Configuration
+#
+# This example demonstrates how to use JSONPath to extract specific values
+# from JSON stored in Parameter Store parameters.
+#
+# JSONPath references use the format: ${ps:/path/to/parameter:json.path.to.key}
+#
+# Benefits:
+# - Reduce API calls by storing multiple values in one JSON parameter
+# - Extract specific keys from nested JSON structures
+# - Maintain backward compatibility with traditional references
+
+# Example Parameter Store Setup:
+#
+# /app/{stage}/database-config contains:
+# {
+#   "primary": {
+#     "host": "primary-db.example.com",
+#     "port": 5432,
+#     "username": "db_user",
+#     "password": "db_password"
+#   },
+#   "replica": {
+#     "host": "replica-db.example.com",
+#     "port": 5432
+#   },
+#   "pool": {
+#     "min_size": 5,
+#     "max_size": 20,
+#     "idle_timeout": 30
+#   }
+# }
+
+app:
+  name: cfg-example-app
+  version: 1.0.0
+
+database:
+  # Using JSONPath to extract specific keys from the same parameter
+  # Multiple references to the same parameter are deduplicated,
+  # resulting in only ONE API call to Parameter Store
+  primary:
+    host: ${ps:/app/{stage}/database-config:primary.host}
+    port: ${ps:/app/{stage}/database-config:primary.port}
+    username: ${ps:/app/{stage}/database-config:primary.username}
+    password: ${ps:/app/{stage}/database-config:primary.password}
+
+  replica:
+    host: ${ps:/app/{stage}/database-config:replica.host}
+    port: ${ps:/app/{stage}/database-config:replica.port}
+
+  # Pool configuration extracted from the same parameter
+  pool:
+    min_connections: ${ps:/app/{stage}/database-config:pool.min_size}
+    max_connections: ${ps:/app/{stage}/database-config:pool.max_size}
+    idle_timeout_seconds: ${ps:/app/{stage}/database-config:pool.idle_timeout}
+
+# Example Parameter: /app/{stage}/server-config
+# {
+#   "server": {
+#     "host": "0.0.0.0",
+#     "port": 8080,
+#     "timeout": 30,
+#     "tls": {
+#       "enabled": true,
+#       "cert_path": "/etc/certs/server.crt",
+#       "key_path": "/etc/certs/server.key"
+#     }
+#   },
+#   "logging": {
+#     "level": "info",
+#     "format": "json"
+#   }
+# }
+
+server:
+  # Server configuration using JSONPath
+  host: ${ps:/app/{stage}/server-config:server.host}
+  port: ${ps:/app/{stage}/server-config:server.port}
+  timeout_seconds: ${ps:/app/{stage}/server-config:server.timeout}
+
+  # Nested TLS configuration
+  tls:
+    enabled: ${ps:/app/{stage}/server-config:server.tls.enabled}
+    cert_path: ${ps:/app/{stage}/server-config:server.tls.cert_path}
+    key_path: ${ps:/app/{stage}/server-config:server.tls.key_path}
+
+# Logging configuration
+logging:
+  level: ${ps:/app/{stage}/server-config:logging.level}
+  format: ${ps:/app/{stage}/server-config:logging.format}
+
+# Traditional references (no JSONPath) also supported
+# These are useful for simple string values in Parameter Store
+secrets:
+  # Simple parameter without JSONPath
+  api_key: ${ps:/app/{stage}/secrets/api-key}
+  database_password: ${ps:/app/{stage}/secrets/db-password}
+
+# Environment variables can be mixed with Parameter Store references
+environment:
+  stage: ${env:APP_STAGE}
+  environment_type: ${stage-prefix:development}
+  region: ${env:AWS_REGION}
+
+# CLI Usage Examples
+#
+# 1. Get a specific JSONPath from a parameter:
+#    cfgctl get /app/prod/database-config --jsonpath=primary.host
+#
+# 2. Get with formatted JSON output:
+#    cfgctl get /app/prod/database-config --format=json
+#
+# 3. Extract nested value:
+#    cfgctl get /app/prod/server-config --jsonpath=server.tls.cert_path
+#
+# 4. Show all available keys in a parameter:
+#    cfgctl get /app/prod/server-config --format=json
+#
+# 5. Load configuration file (resolves all references including JSONPath):
+#    cfgctl config load config-jsonpath.yaml --stage=prod

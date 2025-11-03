@@ -19,6 +19,16 @@
   - `${ps:app/api_url}` → `/cfgtool/{stage}/app/api_url`
 - **用途**: 複数のアプリケーションで共通のParameter Store階層を使用する場合
 
+### 3. config-jsonpath.yaml (JSONPath例)
+- **特徴**: Parameter StoreのJSON値から特定キーを抽出
+- **設定**: `${ps:/path:json.path.to.key}`形式でJSONPathを指定
+- **メリット**:
+  - API呼び出し削減: 複数値を1つのJSONパラメータに格納可能
+  - ネストされたJSON構造のサポート
+  - 既存の従来型参照との完全な後方互換性
+  - 複数の同じパラメータへの参照は自動的に重複排除（1回のAPI呼び出しに統合）
+- **用途**: JSONで複数の設定値を一括保存する場合
+
 ## 実行に必要なParameter Store設定
 
 以下のコマンドを実行して、必要なParameter Storeパラメータを設定してください：
@@ -96,6 +106,11 @@ Web domain: dev-web.mycompany.com
 - **Path Prefix機能**: prefixを使用した柔軟なパス管理
   - `/`始まりのパス: `prefix + path` で自動結合
   - 相対パス: `prefix + "/" + path` で自動結合
+- **JSONPath機能** (config-jsonpath.yaml): JSON値から特定キーを抽出
+  - 形式: `${ps:/path:json.path.to.key}`
+  - API呼び出し削減: 複数の同じパラメータ参照を1回のAPI呼び出しに統合
+  - ネストされたJSON構造のサポート
+  - 型変換: JSON値を自動的にYAML値に変換
 - **環境変数統合**: `${env:...}`記法で環境変数から値を取得
 - **stage-prefix機能**: `${stage-prefix:...}`記法でstage別のプレフィックス生成
 - **Stage解決**: `{stage}`プレースホルダーでstage別のパス生成

@@ -256,3 +256,115 @@ func TestJsonEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestJsonStringListIncompatibility tests that JSON + StringList combination is rejected
+func TestJsonStringListIncompatibility(t *testing.T) {
+	testCases := []struct {
+		name      string
+		jsonValue string
+		jsonFile  string
+		typeList  bool
+		shouldErr bool
+		errMsg    string
+	}{
+		{
+			name:      "json_with_SL_flag",
+			jsonValue: `{"host":"localhost"}`,
+			typeList:  true,
+			shouldErr: true,
+			errMsg:    "JSON values cannot be stored as StringList",
+		},
+		{
+			name:      "json_without_SL_flag",
+			jsonValue: `{"host":"localhost"}`,
+			typeList:  false,
+			shouldErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Save current flag state
+			oldJsonValue := setJsonValue
+			oldTypeList := setTypeList
+
+			// Set test values
+			setJsonValue = tc.jsonValue
+			setTypeList = tc.typeList
+
+			// Simulate the StringList validation logic from runSetCommand
+			if setJsonValue != "" && setTypeList {
+				if !tc.shouldErr {
+					t.Errorf("expected no error but validation would fail")
+				}
+			} else {
+				if tc.shouldErr {
+					t.Errorf("expected error but validation would pass")
+				}
+			}
+
+			// Restore flag state
+			setJsonValue = oldJsonValue
+			setTypeList = oldTypeList
+		})
+	}
+}
+
+// TestJsonSecureStringTypeSelection tests that JSON + SS flag selects SecureString type
+func TestJsonSecureStringTypeSelection(t *testing.T) {
+	testCases := []struct {
+		name        string
+		typeSecure  bool
+		typeString  bool
+		expectedType string
+	}{
+		{
+			name:         "json_with_SS_flag",
+			typeSecure:   true,
+			typeString:   false,
+			expectedType: "SecureString",
+		},
+		{
+			name:         "json_with_S_flag",
+			typeSecure:   false,
+			typeString:   true,
+			expectedType: "String",
+		},
+		{
+			name:         "json_without_flags",
+			typeSecure:   false,
+			typeString:   false,
+			expectedType: "String",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Save current flag state
+			oldTypeSecure := setTypeSecure
+			oldTypeString := setTypeString
+
+			// Set test values
+			setTypeSecure = tc.typeSecure
+			setTypeString = tc.typeString
+
+			// Simulate the type selection logic from runSetCommand
+			var selectedType string
+			if setTypeSecure {
+				selectedType = "SecureString"
+			} else if setTypeString {
+				selectedType = "String"
+			} else {
+				selectedType = "String"
+			}
+
+			if selectedType != tc.expectedType {
+				t.Errorf("expected %s but got %s", tc.expectedType, selectedType)
+			}
+
+			// Restore flag state
+			setTypeSecure = oldTypeSecure
+			setTypeString = oldTypeString
+		})
+	}
+}

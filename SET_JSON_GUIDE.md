@@ -148,12 +148,37 @@ cfgctl get /app/prod/server-config --jsonpath=server.tls.enabled
 # Output: true
 ```
 
+### Secure JSON Storage with SecureString
+
+Store sensitive JSON configuration encrypted with KMS:
+
+```bash
+# Store database credentials as SecureString (encrypted)
+cfgctl set /app/prod/db-secrets --json='{
+  "username":"dbuser",
+  "password":"secret123",
+  "host":"secure-db.example.com"
+}' --SS
+
+# With custom KMS key
+cfgctl set /app/prod/db-secrets --json-file=db-secrets.json --SS --kms-key=arn:aws:kms:region:account:key/keyid
+
+# Retrieve and extract from SecureString
+cfgctl get /app/prod/db-secrets --jsonpath=username
+# Output: dbuser
+```
+
+The JSON value is encrypted at rest in Parameter Store and automatically decrypted when retrieved.
+
 ### Multi-stage Configuration
 
 ```bash
 # Use stage placeholder with JSON file
 cfgctl set /app/{stage}/config --json-file=config.json --stage=dev
 cfgctl set /app/{stage}/config --json-file=config.json --stage=prod
+
+# With SecureString encryption
+cfgctl set /app/{stage}/config --json-file=config.json --SS --stage=prod
 ```
 
 ## Supported JSON Types
@@ -330,11 +355,13 @@ FLAGS:
 
 ## Limitations and Notes
 
-- **4KB limit**: Parameter Store String type has 4KB size limit
-- **Type fixed to String**: JSON values are always stored as String type
+- **4KB limit**: Parameter Store String/SecureString types have 4KB size limit
+- **Type selection**: JSON values can be stored as String (default) or SecureString (--SS)
+- **StringList not supported**: JSON values cannot be stored as StringList type
 - **No compression**: Large JSON objects may hit the 4KB limit
 - **Validation is optional**: Can be disabled with `--json-validate=false`
 - **File encoding**: JSON files must be UTF-8 encoded
+- **KMS permissions**: SecureString storage requires appropriate IAM permissions for KMS key
 
 ## See Also
 

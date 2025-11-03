@@ -19,13 +19,17 @@ var setCmd = &cobra.Command{
 	Long: `Set a parameter value in AWS Parameter Store.
 The parameter path supports {stage} placeholder which will be replaced with the current stage.
 JSON values can be set using --json flag, either from file or as inline JSON string.
+JSON values can be stored as either String (default) or SecureString (--SS) for encrypted storage.
+Note: JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.
 
 Examples:
   cfgctl set /app/{stage}/db/password --stage=prod --SS
   cfgctl set /app/prod/api/timeout "30" -S --no-interactive
   cfgctl set /app/{stage}/db/password --SS
   cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}'
-  cfgctl set /app/prod/config --json-file=config.json`,
+  cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}' --SS
+  cfgctl set /app/prod/config --json-file=config.json
+  cfgctl set /app/prod/config --json-file=config.json --SS`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runSetCommand,
 }
@@ -66,6 +70,11 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 
 	// Handle JSON input first
 	if setJsonValue != "" || setJsonFile != "" {
+		// Validate that JSON is not being stored as StringList
+		if setTypeList {
+			return fmt.Errorf("JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.")
+		}
+
 		jsonValue, err := getJsonValue()
 		if err != nil {
 			return fmt.Errorf("failed to get JSON value: %w", err)
@@ -79,8 +88,15 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		}
 
 		value = jsonValue
-		// Force type to String for JSON values
-		setType = "String"
+		// Determine type for JSON values based on flags
+		if setTypeSecure {
+			setType = "SecureString"
+		} else if setTypeString {
+			setType = "String"
+		} else {
+			// Default to String if no type is explicitly specified
+			setType = "String"
+		}
 	} else {
 		// Determine parameter type from flags
 		if setTypeString {

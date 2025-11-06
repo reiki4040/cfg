@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
+
+	"github.com/reiki4040/cfg/aws"
 )
 
 // JSONDiff は JSON オブジェクトの差分を表現する
@@ -143,4 +147,51 @@ func getSortedModifiedKeys(m map[string]DiffPair) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// CompareParameters は 2 つの Parameter を比較し、JSON 差分または nil を返す
+// JSON 検出失敗時は nil を返し、呼び出し元は文字列比較にフォールバックする
+func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSONDiff, error) {
+	// --no-json-diff フラグが指定されている場合は JSON 差分をスキップ
+	if noJSONDiff {
+		return nil, nil
+	}
+
+	// サイズチェック：10MB を超える JSON はフォールバック
+	const maxJSONSize = 10 * 1024 * 1024 // 10MB
+	if len(param1.Value) > maxJSONSize || len(param2.Value) > maxJSONSize {
+		sizeMB := float64(len(param1.Value)) / (1024 * 1024)
+		if len(param2.Value) > len(param1.Value) {
+			sizeMB = float64(len(param2.Value)) / (1024 * 1024)
+		}
+		fmt.Fprintf(os.Stderr, "Warning: JSON size exceeds 10MB for %s (%.1fMB), using string comparison\n",
+			param1.Name, sizeMB)
+		return nil, nil
+	}
+
+	// JSON として両方をパースしてみる（Optimistic Parsing）
+	var obj1, obj2 map[string]interface{}
+	err1 := json.Unmarshal([]byte(param1.Value), &obj1)
+	err2 := json.Unmarshal([]byte(param2.Value), &obj2)
+
+	// 両方とも JSON パースに成功した場合のみ JSON 差分を実行
+	if err1 == nil && err2 == nil {
+		diff := CompareJSONObjects(obj1, obj2, "")
+		return &diff, nil
+	}
+
+	// パース失敗時は警告を出力して nil を返す（フォールバック）
+	if err1 != nil && err2 != nil {
+		// 両方パース失敗
+		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s: both stages have invalid JSON\n", param1.Name)
+	} else if err1 != nil {
+		// param1 のみパース失敗
+		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 1): %v\n", param1.Name, err1)
+	} else if err2 != nil {
+		// param2 のみパース失敗
+		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 2): %v\n", param2.Name, err2)
+	}
+
+	// フォールバック：nil を返して文字列比較を促す
+	return nil, nil
 }

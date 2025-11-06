@@ -3,6 +3,8 @@ package cli
 import (
 	"reflect"
 	"testing"
+
+	"github.com/reiki4040/cfg/aws"
 )
 
 // TestFlattenJSON_SingleLevel は単一階層の JSON オブジェクトをフラット化するテスト
@@ -712,5 +714,289 @@ func TestGetSortedDiffKeys(t *testing.T) {
 	expectedModified := []string{"cherry", "date"}
 	if !reflect.DeepEqual(modifiedKeys, expectedModified) {
 		t.Errorf("Modified keys: got %v, want %v", modifiedKeys, expectedModified)
+	}
+}
+
+// TestCompareParameters_ValidJSON は両方が有効な JSON の場合の比較をテスト（タスク 3.1）
+func TestCompareParameters_ValidJSON(t *testing.T) {
+	param1 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"host": "localhost", "port": 5432}`,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"host": "remotehost", "port": 5432}`,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// エラーなしで差分が返されることを確認
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if diff == nil {
+		t.Fatal("Expected diff result, got nil")
+	}
+
+	// Modified に host が含まれることを確認
+	if len(diff.Modified) != 1 {
+		t.Errorf("Expected 1 modified attribute, got %d", len(diff.Modified))
+	}
+	if _, ok := diff.Modified["host"]; !ok {
+		t.Error("Expected host in Modified")
+	}
+}
+
+// TestCompareParameters_InvalidJSON は不正な JSON のパース失敗を確認するテスト（タスク 3.1）
+func TestCompareParameters_InvalidJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		param1 aws.ParameterInfo
+		param2 aws.ParameterInfo
+	}{
+		{
+			name: "both invalid JSON",
+			param1: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{invalid json}`,
+				Type:  "String",
+			},
+			param2: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{also invalid}`,
+				Type:  "String",
+			},
+		},
+		{
+			name: "first invalid JSON",
+			param1: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{invalid}`,
+				Type:  "String",
+			},
+			param2: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{"valid": "json"}`,
+				Type:  "String",
+			},
+		},
+		{
+			name: "second invalid JSON",
+			param1: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{"valid": "json"}`,
+				Type:  "String",
+			},
+			param2: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{invalid}`,
+				Type:  "String",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff, err := CompareParameters(tt.param1, tt.param2, false)
+
+			// パース失敗時は nil を返してフォールバックすることを確認
+			if diff != nil {
+				t.Errorf("Expected nil (fallback), got diff: %v", diff)
+			}
+			if err != nil {
+				t.Errorf("Expected no error (graceful degradation), got %v", err)
+			}
+		})
+	}
+}
+
+// TestCompareParameters_PlainText はプレーンテキストが JSON として誤検出されないことをテスト（タスク 3.1）
+func TestCompareParameters_PlainText(t *testing.T) {
+	param1 := aws.ParameterInfo{
+		Name:  "/app/password",
+		Value: "plaintext_password",
+		Type:  "SecureString",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/password",
+		Value: "different_password",
+		Type:  "SecureString",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// プレーンテキストの場合は nil を返す（JSON ではない）
+	if diff != nil {
+		t.Errorf("Expected nil for plain text, got diff: %v", diff)
+	}
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+// TestCompareParameters_TypeMismatch は片方のみ有効な JSON の場合の型不一致検出をテスト（タスク 3.2）
+func TestCompareParameters_TypeMismatch(t *testing.T) {
+	tests := []struct {
+		name   string
+		param1 aws.ParameterInfo
+		param2 aws.ParameterInfo
+	}{
+		{
+			name: "first is JSON, second is plain text",
+			param1: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{"host": "localhost"}`,
+				Type:  "String",
+			},
+			param2: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: "plain text value",
+				Type:  "String",
+			},
+		},
+		{
+			name: "first is plain text, second is JSON",
+			param1: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: "plain text value",
+				Type:  "String",
+			},
+			param2: aws.ParameterInfo{
+				Name:  "/app/config",
+				Value: `{"host": "localhost"}`,
+				Type:  "String",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff, err := CompareParameters(tt.param1, tt.param2, false)
+
+			// 型不一致の場合は nil を返してフォールバック
+			if diff != nil {
+				t.Errorf("Expected nil (fallback to string comparison), got diff: %v", diff)
+			}
+			if err != nil {
+				t.Errorf("Expected no error (graceful degradation), got %v", err)
+			}
+		})
+	}
+}
+
+// TestCompareParameters_NoJSONDiffFlag は --no-json-diff フラグで文字列比較にフォールバックすることをテスト（タスク 3.2）
+func TestCompareParameters_NoJSONDiffFlag(t *testing.T) {
+	param1 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"host": "localhost"}`,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"host": "remotehost"}`,
+		Type:  "String",
+	}
+
+	// --no-json-diff フラグが true の場合
+	diff, err := CompareParameters(param1, param2, true)
+
+	// フラグが指定されている場合は nil を返す
+	if diff != nil {
+		t.Errorf("Expected nil with --no-json-diff flag, got diff: %v", diff)
+	}
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+// TestCompareParameters_SizeLimit_Exactly10MB は 10MB ちょうどの JSON が正常に処理されることをテスト（タスク 3.3）
+func TestCompareParameters_SizeLimit_Exactly10MB(t *testing.T) {
+	// 10MB ちょうどの JSON を生成
+	const targetSize = 10 * 1024 * 1024 // 10MB
+
+	// {"data": "aaa..."} の形式で正確に 10MB にする
+	prefix := `{"data": "`
+	suffix := `"}`
+	paddingSize := targetSize - len(prefix) - len(suffix)
+
+	padding := make([]byte, paddingSize)
+	for i := range padding {
+		padding[i] = 'a'
+	}
+	jsonValue := prefix + string(padding) + suffix
+
+	// サイズを検証
+	if len(jsonValue) != targetSize {
+		t.Fatalf("JSON size mismatch: got %d bytes, want exactly %d", len(jsonValue), targetSize)
+	}
+
+	param1 := aws.ParameterInfo{
+		Name:  "/app/large-config",
+		Value: jsonValue,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/large-config",
+		Value: jsonValue,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// 10MB ちょうどの場合は正常に処理される
+	if err != nil {
+		t.Errorf("Expected no error for 10MB JSON, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for valid JSON, got nil")
+	}
+	// 同一内容なので差分は空
+	if diff != nil && (len(diff.Added) != 0 || len(diff.Removed) != 0 || len(diff.Modified) != 0) {
+		t.Errorf("Expected empty diff for identical JSON, got: Added=%d, Removed=%d, Modified=%d",
+			len(diff.Added), len(diff.Removed), len(diff.Modified))
+	}
+}
+
+// TestCompareParameters_SizeLimit_Over10MB は 10MB + 1 バイトの JSON がフォールバックすることをテスト（タスク 3.3）
+func TestCompareParameters_SizeLimit_Over10MB(t *testing.T) {
+	// 10MB + 1 バイトの JSON を生成
+	const targetSize = 10*1024*1024 + 1 // 10MB + 1 byte
+
+	prefix := `{"data": "`
+	suffix := `"}`
+	paddingSize := targetSize - len(prefix) - len(suffix)
+
+	padding := make([]byte, paddingSize)
+	for i := range padding {
+		padding[i] = 'a'
+	}
+	jsonValue := prefix + string(padding) + suffix
+
+	// サイズを検証
+	if len(jsonValue) != targetSize {
+		t.Fatalf("JSON size mismatch: got %d bytes, want exactly %d", len(jsonValue), targetSize)
+	}
+
+	param1 := aws.ParameterInfo{
+		Name:  "/app/huge-config",
+		Value: jsonValue,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/huge-config",
+		Value: jsonValue,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// 10MB を超える場合はフォールバック
+	if diff != nil {
+		t.Errorf("Expected nil (fallback) for >10MB JSON, got diff: %v", diff)
+	}
+	if err != nil {
+		t.Errorf("Expected no error (graceful degradation), got %v", err)
 	}
 }

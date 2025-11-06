@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"time"
 
 	"github.com/reiki4040/cfg/aws"
 )
@@ -312,6 +313,9 @@ func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSON
 		return nil, nil
 	}
 
+	// パフォーマンス測定開始
+	startTime := time.Now()
+
 	// JSON として両方をパースしてみる（Optimistic Parsing）
 	var obj1, obj2 map[string]interface{}
 	err1 := json.Unmarshal([]byte(param1.Value), &obj1)
@@ -320,6 +324,16 @@ func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSON
 	// 両方とも JSON パースに成功した場合のみ JSON 差分を実行
 	if err1 == nil && err2 == nil {
 		diff := CompareJSONObjects(obj1, obj2, "")
+
+		// パフォーマンス情報の出力（1000属性を超える場合）
+		totalAttributes := len(diff.Added) + len(diff.Removed) + len(diff.Modified)
+		const largeAttributeThreshold = 1000
+		if totalAttributes > largeAttributeThreshold {
+			elapsed := time.Since(startTime)
+			fmt.Fprintf(os.Stderr, "Info: Large JSON (%d attributes) for %s, comparison took %v\n",
+				totalAttributes, param1.Name, elapsed)
+		}
+
 		return &diff, nil
 	}
 

@@ -1000,3 +1000,294 @@ func TestCompareParameters_SizeLimit_Over10MB(t *testing.T) {
 		t.Errorf("Expected no error (graceful degradation), got %v", err)
 	}
 }
+
+// TestFormatJSONDiffLine_AddedLine は追加行のフォーマットをテスト（タスク 4.1）
+func TestFormatJSONDiffLine_AddedLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		value    interface{}
+		expected string
+	}{
+		{
+			name:     "string value",
+			path:     "host",
+			value:    "localhost",
+			expected: "+ host: localhost",
+		},
+		{
+			name:     "numeric value",
+			path:     "port",
+			value:    float64(5432),
+			expected: "+ port: 5432",
+		},
+		{
+			name:     "boolean value",
+			path:     "enabled",
+			value:    true,
+			expected: "+ enabled: true",
+		},
+		{
+			name:     "null value",
+			path:     "optional",
+			value:    nil,
+			expected: "+ optional: null",
+		},
+		{
+			name:     "nested path",
+			path:     "database.connection.host",
+			value:    "db.example.com",
+			expected: "+ database.connection.host: db.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatJSONDiffLine("+", tt.path, tt.value)
+			if result != tt.expected {
+				t.Errorf("FormatJSONDiffLine() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFormatJSONDiffLine_RemovedLine は削除行のフォーマットをテスト（タスク 4.1）
+func TestFormatJSONDiffLine_RemovedLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		value    interface{}
+		expected string
+	}{
+		{
+			name:     "string value",
+			path:     "old_host",
+			value:    "oldserver",
+			expected: "- old_host: oldserver",
+		},
+		{
+			name:     "numeric value",
+			path:     "old_port",
+			value:    float64(3306),
+			expected: "- old_port: 3306",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatJSONDiffLine("-", tt.path, tt.value)
+			if result != tt.expected {
+				t.Errorf("FormatJSONDiffLine() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFormatJSONDiffLine_ModifiedLines は変更行のフォーマットをテスト（タスク 4.1）
+func TestFormatJSONDiffLine_ModifiedLines(t *testing.T) {
+	// 変更は削除行と追加行のペアで表現される
+	path := "host"
+	oldValue := "localhost"
+	newValue := "remotehost"
+
+	removedLine := FormatJSONDiffLine("-", path, oldValue)
+	addedLine := FormatJSONDiffLine("+", path, newValue)
+
+	expectedRemoved := "- host: localhost"
+	expectedAdded := "+ host: remotehost"
+
+	if removedLine != expectedRemoved {
+		t.Errorf("Removed line = %q, want %q", removedLine, expectedRemoved)
+	}
+	if addedLine != expectedAdded {
+		t.Errorf("Added line = %q, want %q", addedLine, expectedAdded)
+	}
+}
+
+// TestDisplayJSONDiff_Header はヘッダーに [JSON] タグが含まれることをテスト（タスク 4.2）
+func TestDisplayJSONDiff_Header(t *testing.T) {
+	// Note: displayJSONDiff は標準出力に書き込むため、実際の出力テストは統合テストで行う
+	// ここでは FormatJSONDiffHeader のようなヘルパー関数をテストする
+
+	paramName := "/dev/app/config"
+	stage1 := "dev"
+	stage2 := "stg"
+
+	header := FormatJSONDiffHeader(paramName, stage1, stage2)
+
+	// ヘッダーに [JSON] タグが含まれることを確認
+	if !contains(header, "[JSON]") {
+		t.Errorf("Header should contain [JSON] tag, got: %s", header)
+	}
+
+	// パラメータ名が含まれることを確認
+	if !contains(header, paramName) {
+		t.Errorf("Header should contain parameter name, got: %s", header)
+	}
+}
+
+// contains はテストヘルパー：文字列に部分文字列が含まれるかチェック
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDisplayJSONDiff_UnifiedFormat は unified diff 形式に準拠することをテスト（タスク 4.2）
+func TestDisplayJSONDiff_UnifiedFormat(t *testing.T) {
+	diff := JSONDiff{
+		Added: map[string]interface{}{
+			"new_key": "new_value",
+		},
+		Removed: map[string]interface{}{
+			"old_key": "old_value",
+		},
+		Modified: map[string]DiffPair{
+			"changed_key": {Old: "old", New: "new"},
+		},
+	}
+
+	// FormatJSONDiffOutput のような関数が必要
+	output := FormatJSONDiffOutput("/app/config", "dev", "stg", diff, false)
+
+	// unified diff の基本要素が含まれることを確認
+	if !contains(output, "---") {
+		t.Error("Output should contain --- (removed file marker)")
+	}
+	if !contains(output, "+++") {
+		t.Error("Output should contain +++ (added file marker)")
+	}
+	if !contains(output, "@@") {
+		t.Error("Output should contain @@ (chunk header)")
+	}
+	if !contains(output, "[JSON]") {
+		t.Error("Output should contain [JSON] tag")
+	}
+}
+
+// TestDisplayJSONDiff_AttributePaths は属性パスが . 区切りで表示されることをテスト（タスク 4.2）
+func TestDisplayJSONDiff_AttributePaths(t *testing.T) {
+	diff := JSONDiff{
+		Added: map[string]interface{}{
+			"database.connection.host": "localhost",
+		},
+		Removed:  map[string]interface{}{},
+		Modified: map[string]DiffPair{},
+	}
+
+	output := FormatJSONDiffOutput("/app/config", "dev", "stg", diff, false)
+
+	// 属性パスが . 区切りで表示されることを確認
+	if !contains(output, "database.connection.host") {
+		t.Errorf("Output should contain nested path with dots, got: %s", output)
+	}
+}
+
+// TestFormatSecureValue_Masked は --show-secrets なしで値がマスクされることをテスト（タスク 4.3）
+func TestFormatSecureValue_Masked(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected string
+	}{
+		{
+			name:     "string value",
+			value:    "secret_password",
+			expected: "***masked***",
+		},
+		{
+			name:     "numeric value",
+			value:    float64(12345),
+			expected: "***masked***",
+		},
+		{
+			name:     "boolean value",
+			value:    true,
+			expected: "***masked***",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSecureValue(tt.value, false)
+			if result != tt.expected {
+				t.Errorf("formatSecureValue() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFormatSecureValue_Shown は --show-secrets ありで実際の値が表示されることをテスト（タスク 4.3）
+func TestFormatSecureValue_Shown(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected string
+	}{
+		{
+			name:     "string value",
+			value:    "actual_password",
+			expected: "actual_password",
+		},
+		{
+			name:     "numeric value",
+			value:    float64(12345),
+			expected: "12345",
+		},
+		{
+			name:     "boolean value",
+			value:    true,
+			expected: "true",
+		},
+		{
+			name:     "null value",
+			value:    nil,
+			expected: "null",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSecureValue(tt.value, true)
+			if result != tt.expected {
+				t.Errorf("formatSecureValue() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFormatJSONDiffOutput_WithSecureString は SecureString パラメータのマスキングをテスト（タスク 4.3）
+func TestFormatJSONDiffOutput_WithSecureString(t *testing.T) {
+	diff := JSONDiff{
+		Added: map[string]interface{}{
+			"password": "secret123",
+		},
+		Removed:  map[string]interface{}{},
+		Modified: map[string]DiffPair{},
+	}
+
+	// showSecrets = false の場合
+	outputMasked := FormatJSONDiffOutputSecure("/app/secrets", "dev", "stg", diff, false, "SecureString")
+	if !contains(outputMasked, "***masked***") {
+		t.Errorf("Output should contain masked value, got: %s", outputMasked)
+	}
+
+	// showSecrets = true の場合
+	outputShown := FormatJSONDiffOutputSecure("/app/secrets", "dev", "stg", diff, true, "SecureString")
+	if !contains(outputShown, "secret123") {
+		t.Errorf("Output should contain actual value, got: %s", outputShown)
+	}
+
+	// Type が "String" の場合はマスクしない
+	outputString := FormatJSONDiffOutputSecure("/app/config", "dev", "stg", diff, false, "String")
+	if !contains(outputString, "secret123") {
+		t.Errorf("Output should contain actual value for String type, got: %s", outputString)
+	}
+}

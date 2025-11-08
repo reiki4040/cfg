@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ func TestSecureStringMaskedWithColor(t *testing.T) {
 	if !hasANSICode(coloredRemoval) {
 		t.Errorf("masked secret in removal line should have ANSI code")
 	}
-	if !contains(coloredRemoval, maskedSecret) {
+	if !strings.Contains(coloredRemoval, maskedSecret) {
 		t.Errorf("masked secret should be preserved in colored output")
 	}
 
@@ -24,7 +25,7 @@ func TestSecureStringMaskedWithColor(t *testing.T) {
 	if !hasANSICode(coloredAddition) {
 		t.Errorf("masked secret in addition line should have ANSI code")
 	}
-	if !contains(coloredAddition, maskedSecret) {
+	if !strings.Contains(coloredAddition, maskedSecret) {
 		t.Errorf("masked secret should be preserved in colored output")
 	}
 }
@@ -40,7 +41,7 @@ func TestSecureStringSecretValueWithColor(t *testing.T) {
 	if !hasANSICode(coloredRemoval) {
 		t.Errorf("secret value in removal line should have ANSI code")
 	}
-	if !contains(coloredRemoval, secretValue) {
+	if !strings.Contains(coloredRemoval, secretValue) {
 		t.Errorf("secret value should be preserved in colored output")
 	}
 
@@ -49,7 +50,7 @@ func TestSecureStringSecretValueWithColor(t *testing.T) {
 	if !hasANSICode(coloredAddition) {
 		t.Errorf("secret value in addition line should have ANSI code")
 	}
-	if !contains(coloredAddition, secretValue) {
+	if !strings.Contains(coloredAddition, secretValue) {
 		t.Errorf("secret value should be preserved in colored output")
 	}
 }
@@ -66,7 +67,7 @@ func TestANSICodeInjectionPrevention(t *testing.T) {
 	colored := colorizeRemovalLine("-" + inputWithANSI)
 
 	// 最低限、入力値が出力に含まれることを確認
-	if !contains(colored, inputWithANSI) {
+	if !strings.Contains(colored, inputWithANSI) {
 		t.Errorf("input value should be in output")
 	}
 }

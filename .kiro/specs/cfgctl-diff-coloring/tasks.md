@@ -152,21 +152,21 @@
 
 ---
 
-- [ ] 8. 統合テストと最終検証
-- [ ] 8.1 全 diff モードでの統合テスト
+- [x] 8. 統合テストと最終検証
+- [x] 8.1 全 diff モードでの統合テスト
   - 2ステージ diff（--compare-stage）での色出力確認
   - マルチステージ diff（--stages）での色出力確認
   - JSON diff（属性レベル）での色出力確認
   - 各フラグ（--keys-only、--show-secrets、--no-json-diff、--json-expand）との組み合わせテスト
   - _Requirements: 1.1, 2.1, 3.1, 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 8.2 後方互換性の確認
+- [x] 8.2 後方互換性の確認
   - 色無し出力（--color=never）で既存の diff 出力と同一であることを確認
   - パイプ出力時に自動的に色が無効化されることを確認
   - CI/CD 環境（GitHub Actions など）での動作確認
   - _Requirements: 全般_
 
-- [ ] 8.3 本番環境での基本動作確認
+- [x] 8.3 本番環境での基本動作確認
   - 実際の Parameter Store データを使用した diff コマンド実行
   - 複数ステージ（dev、stg、prod）での実際の色出力確認
   - 秘密値を含むパラメータの色出力（--show-secrets なし/あり）確認

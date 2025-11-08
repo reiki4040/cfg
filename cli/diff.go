@@ -88,8 +88,20 @@ func runDiffPsCommand(cmd *cobra.Command, args []string) error {
 	stageResolver1 := cfg.NewStageResolver(stage)
 	stageResolver2 := cfg.NewStageResolver(diffCompareStage)
 
-	resolvedPath1 := stageResolver1.ResolvePath(comparePath)
-	resolvedPath2 := stageResolver2.ResolvePath(comparePath)
+	// 比較パスにステージプレースホルダーがない場合、追加する
+	// これにより、diff での stage 別パラメータ取得が正しく機能する
+	pathForDiff := comparePath
+	if !strings.Contains(pathForDiff, "{stage}") {
+		// パスに {stage} が含まれていない場合、パスの末尾に応じて追加
+		if strings.HasSuffix(pathForDiff, "/") {
+			pathForDiff = pathForDiff + "{stage}/"
+		} else {
+			pathForDiff = pathForDiff + "/{stage}"
+		}
+	}
+
+	resolvedPath1 := stageResolver1.ResolvePath(pathForDiff)
+	resolvedPath2 := stageResolver2.ResolvePath(pathForDiff)
 
 	// Get parameter infos for both stages
 	ctx := context.Background()

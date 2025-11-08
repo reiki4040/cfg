@@ -16,12 +16,26 @@ var diffCmd = &cobra.Command{
 	Short: "Compare Parameter Store between stages",
 	Long: `Compare Parameter Store parameters between stages.
 
+Color Output:
+By default, diff output includes ANSI color codes for better readability:
+  - Removed parameters are shown in RED
+  - Added parameters are shown in GREEN
+  - Changed parameters are shown in YELLOW
+  - Unchanged parameters are shown in DEFAULT color
+
+Color Mode Control (--color flag):
+  auto   (default): Automatically detect if output is a terminal
+  always: Force color output even when piping
+  never:  Disable color output (useful for logs and CI/CD)
+
 Examples:
   cfgctl diff --stage=dev --compare-stage=stg --path=/app/
   cfgctl diff --stages=dev,stg,prod --path=/app/
   cfgctl diff --stage=dev --compare-stage=stg --keys-only
   cfgctl diff --stage=dev --compare-stage=stg --show-secrets
-  cfgctl diff --stage=dev --compare-stage=stg --compare-profile=prod-profile`,
+  cfgctl diff --stage=dev --compare-stage=stg --compare-profile=prod-profile
+  cfgctl diff --stage=dev --compare-stage=stg --color=always
+  cfgctl diff --stage=dev --compare-stage=stg --color=never`,
 	RunE: runDiffPsCommand,
 }
 

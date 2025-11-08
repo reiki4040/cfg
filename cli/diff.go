@@ -36,6 +36,7 @@ var (
 	diffCompareProfile string
 	diffNoJSONDiff     bool
 	diffJSONExpand     bool
+	diffColorMode      string
 )
 
 func init() {
@@ -49,9 +50,13 @@ func init() {
 	diffCmd.Flags().StringVar(&diffCompareProfile, "compare-profile", "", "AWS profile for comparison target")
 	diffCmd.Flags().BoolVar(&diffNoJSONDiff, "no-json-diff", false, "Disable JSON attribute-level diff (use string comparison)")
 	diffCmd.Flags().BoolVar(&diffJSONExpand, "json-expand", false, "Expand JSON attributes in multi-stage diff table")
+	diffCmd.Flags().StringVar(&diffColorMode, "color", "auto", "Color output mode: auto (default), always, never")
 }
 
 func runDiffPsCommand(cmd *cobra.Command, args []string) error {
+	// 色出力モードを初期化
+	setColorMode(diffColorMode)
+
 	if diffStages != "" {
 		return runMultiStageDiff()
 	}
@@ -228,18 +233,18 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 		for _, key := range onlyIn1 {
 			param := params1[key]
 			if keysOnly {
-				fmt.Printf("- %s\n", key)
+				fmt.Printf("%s\n", colorizeRemovalLine("- "+key))
 			} else {
 				// Show actual resolved parameter paths for each stage
 				param1Path := param.Name
 				param2Path := strings.Replace(key, "/{stage}/", "/"+stage2+"/", 1)
-				fmt.Printf("--- %s (%s)\n", param1Path, stage1)
-				fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
-				fmt.Printf("@@ -1 +0,0 @@\n")
+				fmt.Printf("%s\n", colorizeHeaderLine("--- "+param1Path+" ("+stage1+")"))
+				fmt.Printf("%s\n", colorizeHeaderLine("+++ "+param2Path+" ("+stage2+")"))
+				fmt.Printf("%s\n", colorizeHeaderLine("@@ -1 +0,0 @@"))
 				if param.Type == "SecureString" && !showSecrets {
-					fmt.Printf("-***masked secret***\n")
+					fmt.Printf("%s\n", colorizeRemovalLine("-***masked secret***"))
 				} else {
-					fmt.Printf("-%s\n", param.Value)
+					fmt.Printf("%s\n", colorizeRemovalLine("-"+param.Value))
 				}
 				fmt.Println()
 			}
@@ -250,18 +255,18 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 		for _, key := range onlyIn2 {
 			param := params2[key]
 			if keysOnly {
-				fmt.Printf("+ %s\n", key)
+				fmt.Printf("%s\n", colorizeAdditionLine("+ "+key))
 			} else {
 				// Show actual resolved parameter paths for each stage
 				param1Path := strings.Replace(key, "/{stage}/", "/"+stage1+"/", 1)
 				param2Path := param.Name
-				fmt.Printf("--- %s (%s)\n", param1Path, stage1)
-				fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
-				fmt.Printf("@@ -0,0 +1 @@\n")
+				fmt.Printf("%s\n", colorizeHeaderLine("--- "+param1Path+" ("+stage1+")"))
+				fmt.Printf("%s\n", colorizeHeaderLine("+++ "+param2Path+" ("+stage2+")"))
+				fmt.Printf("%s\n", colorizeHeaderLine("@@ -0,0 +1 @@"))
 				if param.Type == "SecureString" && !showSecrets {
-					fmt.Printf("+***masked secret***\n")
+					fmt.Printf("%s\n", colorizeAdditionLine("+***masked secret***"))
 				} else {
-					fmt.Printf("+%s\n", param.Value)
+					fmt.Printf("%s\n", colorizeAdditionLine("+"+param.Value))
 				}
 				fmt.Println()
 			}
@@ -273,7 +278,7 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 			param1 := params1[key]
 			param2 := params2[key]
 			if keysOnly {
-				fmt.Printf("~ %s\n", key)
+				fmt.Printf("%s\n", colorizeChangeLine("~ "+key))
 			} else {
 				// Try JSON diff if not disabled and not keys-only mode
 				var jsonDiffOutput string
@@ -286,6 +291,8 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 						} else {
 							jsonDiffOutput = FormatJSONDiffOutput(param1.Name, stage1, stage2, *diff, showSecrets)
 						}
+						// JSON diff output に色付けを適用
+						jsonDiffOutput = colorizeJsonDiffOutput(jsonDiffOutput)
 					}
 				}
 
@@ -296,21 +303,51 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 					// Fall back to string comparison
 					param1Path := param1.Name
 					param2Path := param2.Name
-					fmt.Printf("--- %s (%s)\n", param1Path, stage1)
-					fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
-					fmt.Printf("@@ -1 +1 @@\n")
+					fmt.Printf("%s\n", colorizeHeaderLine("--- "+param1Path+" ("+stage1+")"))
+					fmt.Printf("%s\n", colorizeHeaderLine("+++ "+param2Path+" ("+stage2+")"))
+					fmt.Printf("%s\n", colorizeHeaderLine("@@ -1 +1 @@"))
 					if (param1.Type == "SecureString" || param2.Type == "SecureString") && !showSecrets {
-						fmt.Printf("-***masked secret***\n")
-						fmt.Printf("+***masked secret***\n")
+						fmt.Printf("%s\n", colorizeRemovalLine("-***masked secret***"))
+						fmt.Printf("%s\n", colorizeAdditionLine("+***masked secret***"))
 					} else {
-						fmt.Printf("-%s\n", param1.Value)
-						fmt.Printf("+%s\n", param2.Value)
+						fmt.Printf("%s\n", colorizeRemovalLine("-"+param1.Value))
+						fmt.Printf("%s\n", colorizeAdditionLine("+"+param2.Value))
 					}
 					fmt.Println()
 				}
 			}
 		}
 	}
+}
+
+// isValuesVarying: 複数ステージでの値が異なるかを判定
+func isValuesVarying(valuesByStage map[string]string, existenceByStage map[string]bool) bool {
+	// ステージ間で存在の有無が異なる場合
+	existCount := 0
+	for _, exists := range existenceByStage {
+		if exists {
+			existCount++
+		}
+	}
+	if existCount != len(existenceByStage) && existCount > 0 {
+		return true // 一部ステージにのみ存在
+	}
+
+	// 値が異なる場合
+	if len(valuesByStage) == 0 {
+		return false
+	}
+
+	var firstValue string
+	for _, value := range valuesByStage {
+		if firstValue == "" {
+			firstValue = value
+		} else if value != firstValue {
+			return true // 値が異なる
+		}
+	}
+
+	return false // すべてのステージで同一の値
 }
 
 func displayParameterStoreDiff(stage1, stage2 string, params1, params2 map[string]string, path string) {
@@ -455,11 +492,29 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 		for _, key := range sortedKeys {
 			fmt.Printf("%-50s", key)
 
+			// 複数ステージでの値の異同を検出
+			valuesByStage := make(map[string]string)
+			existenceByStage := make(map[string]bool)
+			for _, stage := range stages {
+				params := stageParams[stage]
+				if param, exists := params[key]; exists {
+					existenceByStage[stage] = true
+					valuesByStage[stage] = param.Value
+				} else {
+					existenceByStage[stage] = false
+				}
+			}
+			isValueDifferent := isValuesVarying(valuesByStage, existenceByStage)
+
 			for _, stage := range stages {
 				params := stageParams[stage]
 				if param, exists := params[key]; exists {
 					if param.Type == "SecureString" && !showSecrets {
-						fmt.Printf(" %-32s", "***masked secret***")
+						displayValue := "***masked secret***"
+						if shouldUseColor() && isValueDifferent {
+							displayValue = colorizeTableValue(displayValue, "changed")
+						}
+						fmt.Printf(" %-32s", displayValue)
 					} else {
 						displayValue := param.Value
 
@@ -476,10 +531,18 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 						if len(displayValue) > 29 {
 							displayValue = displayValue[:29] + "..."
 						}
+
+						if shouldUseColor() && isValueDifferent {
+							displayValue = colorizeTableValue(displayValue, "changed")
+						}
 						fmt.Printf(" %-32s", displayValue)
 					}
 				} else {
-					fmt.Printf(" %-32s", "-")
+					missingValue := "-"
+					if shouldUseColor() && isValueDifferent {
+						missingValue = colorizeTableValue(missingValue, "missing")
+					}
+					fmt.Printf(" %-32s", missingValue)
 				}
 			}
 			fmt.Println()

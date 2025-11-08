@@ -76,7 +76,17 @@ func flattenJSON(obj map[string]interface{}, prefix string) map[string]interface
 	return result
 }
 
-// CompareJSONObjects は 2 つの JSON オブジェクトを再帰的に比較する
+// CompareJSONObjects は 2 つの JSON オブジェクトを再帰的に比較し、差分を返します。
+// ネストされたオブジェクトと配列は自動的にフラット化され、ドット記法のパスで表現されます。
+// 例: {"database": {"host": "localhost"}} -> "database.host"
+//
+// Parameters:
+//   - obj1: 比較元の JSON オブジェクト
+//   - obj2: 比較先の JSON オブジェクト
+//   - basePath: 属性パスのプレフィックス（通常は空文字列）
+//
+// Returns:
+//   - JSONDiff: 追加・削除・変更された属性を含む差分オブジェクト
 func CompareJSONObjects(obj1, obj2 map[string]interface{}, basePath string) JSONDiff {
 	// 両方のオブジェクトをフラット化
 	flat1 := flattenJSON(obj1, basePath)
@@ -150,54 +160,9 @@ func getSortedModifiedKeys(m map[string]DiffPair) []string {
 	return keys
 }
 
-// FormatJSONDiffLine は差分の 1 行を unified diff 形式でフォーマットする
-func FormatJSONDiffLine(op string, path string, value interface{}) string {
-	// 値を文字列化
-	var valueStr string
-	switch v := value.(type) {
-	case nil:
-		valueStr = "null"
-	case string:
-		valueStr = v
-	case bool:
-		if v {
-			valueStr = "true"
-		} else {
-			valueStr = "false"
-		}
-	case float64:
-		// JSON の数値は float64 として扱われる
-		// 整数の場合は小数点なしで表示
-		if v == float64(int64(v)) {
-			valueStr = fmt.Sprintf("%d", int64(v))
-		} else {
-			valueStr = fmt.Sprintf("%g", v)
-		}
-	default:
-		valueStr = fmt.Sprintf("%v", v)
-	}
-
-	// unified diff 形式：{op} {path}: {value}
-	return fmt.Sprintf("%s %s: %s", op, path, valueStr)
-}
-
-// FormatJSONDiffHeader は unified diff のヘッダー行を生成する
-func FormatJSONDiffHeader(paramName, stage1, stage2 string) string {
-	// unified diff 形式のヘッダー
-	// --- /path [JSON] (stage1)
-	// +++ /path [JSON] (stage2)
-	removed := fmt.Sprintf("--- %s [JSON] (%s)", paramName, stage1)
-	added := fmt.Sprintf("+++ %s [JSON] (%s)", paramName, stage2)
-	return removed + "\n" + added
-}
-
-// formatSecureValue は SecureString の値をマスクまたは表示する
-func formatSecureValue(value interface{}, showSecrets bool) string {
-	if !showSecrets {
-		return "***masked***"
-	}
-
-	// showSecrets が true の場合は実際の値を表示
+// formatValueAsString は JSON 値を文字列に変換します。
+// 数値、真偽値、null を適切な形式で文字列化します。
+func formatValueAsString(value interface{}) string {
 	switch v := value.(type) {
 	case nil:
 		return "null"
@@ -209,6 +174,8 @@ func formatSecureValue(value interface{}, showSecrets bool) string {
 		}
 		return "false"
 	case float64:
+		// JSON の数値は float64 として扱われる
+		// 整数の場合は小数点なしで表示
 		if v == float64(int64(v)) {
 			return fmt.Sprintf("%d", int64(v))
 		}
@@ -218,7 +185,63 @@ func formatSecureValue(value interface{}, showSecrets bool) string {
 	}
 }
 
-// FormatJSONDiffOutput は JSON 差分全体を unified diff 形式で出力する
+// FormatJSONDiffLine は差分の 1 行を unified diff 形式でフォーマットします。
+// 出力形式: "{op} {path}: {value}" (例: "+ database.host: localhost")
+//
+// Parameters:
+//   - op: 操作タイプ（"+" は追加、"-" は削除）
+//   - path: 属性パス（ドット記法）
+//   - value: 属性値（文字列、数値、真偽値、null など）
+//
+// Returns:
+//   - string: フォーマットされた差分行
+func FormatJSONDiffLine(op string, path string, value interface{}) string {
+	valueStr := formatValueAsString(value)
+	// unified diff 形式：{op} {path}: {value}
+	return fmt.Sprintf("%s %s: %s", op, path, valueStr)
+}
+
+// FormatJSONDiffHeader は unified diff のヘッダー行を生成します。
+// [JSON] タグを含むヘッダーを生成し、JSON 差分であることを明示します。
+//
+// Parameters:
+//   - paramName: パラメータ名（Parameter Store のパス）
+//   - stage1: 比較元の Stage 名（例: "dev"）
+//   - stage2: 比較先の Stage 名（例: "prod"）
+//
+// Returns:
+//   - string: unified diff 形式のヘッダー（--- と +++ の2行）
+func FormatJSONDiffHeader(paramName, stage1, stage2 string) string {
+	// unified diff 形式のヘッダー
+	// --- /path [JSON] (stage1)
+	// +++ /path [JSON] (stage2)
+	removed := fmt.Sprintf("--- %s [JSON] (%s)", paramName, stage1)
+	added := fmt.Sprintf("+++ %s [JSON] (%s)", paramName, stage2)
+	return removed + "\n" + added
+}
+
+// formatSecureValue は SecureString の値をマスクまたは表示します。
+// showSecrets が false の場合は "***masked***" を返し、true の場合は実際の値を表示します。
+func formatSecureValue(value interface{}, showSecrets bool) string {
+	if !showSecrets {
+		return "***masked***"
+	}
+	// showSecrets が true の場合は実際の値を表示
+	return formatValueAsString(value)
+}
+
+// FormatJSONDiffOutput は JSON 差分全体を unified diff 形式で出力します。
+// 追加・削除・変更された属性をアルファベット順にソートして表示します。
+//
+// Parameters:
+//   - paramName: パラメータ名（Parameter Store のパス）
+//   - stage1: 比較元の Stage 名
+//   - stage2: 比較先の Stage 名
+//   - diff: CompareJSONObjects() から返された差分オブジェクト
+//   - showSecrets: true の場合、SecureString の実際の値を表示（未使用）
+//
+// Returns:
+//   - string: unified diff 形式の完全な差分出力
 func FormatJSONDiffOutput(paramName, stage1, stage2 string, diff JSONDiff, showSecrets bool) string {
 	var output string
 
@@ -251,7 +274,19 @@ func FormatJSONDiffOutput(paramName, stage1, stage2 string, diff JSONDiff, showS
 	return output
 }
 
-// FormatJSONDiffOutputSecure は SecureString パラメータ用の差分出力（マスキング対応）
+// FormatJSONDiffOutputSecure は SecureString パラメータ用の差分出力を生成します。
+// showSecrets が false の場合、すべての値を "***masked***" でマスキングします。
+//
+// Parameters:
+//   - paramName: パラメータ名（Parameter Store のパス）
+//   - stage1: 比較元の Stage 名
+//   - stage2: 比較先の Stage 名
+//   - diff: CompareJSONObjects() から返された差分オブジェクト
+//   - showSecrets: true の場合、実際の値を表示；false の場合、"***masked***" でマスキング
+//   - paramType: パラメータタイプ（"SecureString" の場合のみマスキング適用）
+//
+// Returns:
+//   - string: unified diff 形式の差分出力（SecureString の場合はマスキング済み）
 func FormatJSONDiffOutputSecure(paramName, stage1, stage2 string, diff JSONDiff, showSecrets bool, paramType string) string {
 	// SecureString でない場合は通常の出力
 	if paramType != "SecureString" {
@@ -293,8 +328,15 @@ func FormatJSONDiffOutputSecure(paramName, stage1, stage2 string, diff JSONDiff,
 	return output
 }
 
-// FormatJSONSummary は JSON 値のサマリーを生成する
-// 長い JSON や複雑な JSON に対して [JSON: N keys] 形式で表示
+// FormatJSONSummary は JSON 値のサマリーを生成します。
+// マルチステージ diff 表示で長い JSON 値を簡潔に表示するために使用します。
+// フラット化後のキー数を [JSON: N keys] 形式で表示します。
+//
+// Parameters:
+//   - jsonStr: JSON 文字列（有効・無効どちらも受け付ける）
+//
+// Returns:
+//   - string: "[JSON: N keys]" 形式のサマリー、または無効な JSON の場合は truncate された文字列
 func FormatJSONSummary(jsonStr string) string {
 	// JSON としてパースを試行
 	var obj map[string]interface{}
@@ -319,8 +361,18 @@ func FormatJSONSummary(jsonStr string) string {
 	return fmt.Sprintf("[JSON: %d keys]", keyCount)
 }
 
-// CompareParameters は 2 つの Parameter を比較し、JSON 差分または nil を返す
-// JSON 検出失敗時は nil を返し、呼び出し元は文字列比較にフォールバックする
+// CompareParameters は 2 つの Parameter Store パラメータを比較し、JSON 差分または nil を返します。
+// Optimistic Parsing アプローチを使用し、JSON として有効な場合のみ属性レベルの差分を返します。
+// JSON 検出失敗時やサイズ超過時は nil を返し、呼び出し元が文字列比較にフォールバックします。
+//
+// Parameters:
+//   - param1: 比較元のパラメータ（通常は stage1）
+//   - param2: 比較先のパラメータ（通常は stage2）
+//   - noJSONDiff: true の場合、JSON 差分をスキップして nil を返す
+//
+// Returns:
+//   - *JSONDiff: JSON 差分オブジェクト（JSON として有効な場合）、またはフォールバック時は nil
+//   - error: 常に nil（将来の拡張用）
 func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSONDiff, error) {
 	// --no-json-diff フラグが指定されている場合は JSON 差分をスキップ
 	if noJSONDiff {

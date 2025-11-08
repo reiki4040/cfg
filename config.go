@@ -25,17 +25,84 @@ type LoadOptions struct {
 }
 
 type ConfigError struct {
-	Type    string // "missing_parameter", "aws_error", "parse_error"
-	Path    string
-	Message string
-	Cause   error
+	Type             string   // "missing_parameter", "aws_error", "parse_error", "json_error"
+	Path             string
+	Message          string
+	Cause            error
+	JSONPath         string   // JSONPath that failed (for json_error type)
+	AvailableKeys    []string // Available keys in the JSON object (for key_not_found)
+	ExpectedType     string   // Expected type in JSON (for type_mismatch)
+	ActualType       string   // Actual type found (for type_mismatch)
 }
 
 func (e *ConfigError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("%s: %s (caused by: %v)", e.Type, e.Message, e.Cause)
+	baseMsg := fmt.Sprintf("%s: %s", e.Type, e.Message)
+
+	// Add JSONPath-specific information if available
+	if e.Type == "json_error" {
+		if e.JSONPath != "" {
+			baseMsg = fmt.Sprintf("%s (JSONPath: %s)", baseMsg, e.JSONPath)
+		}
+
+		// Add available keys information for key_not_found errors
+		if len(e.AvailableKeys) > 0 {
+			baseMsg = fmt.Sprintf("%s (available keys: %v)", baseMsg, e.AvailableKeys)
+		}
+
+		// Add type mismatch information
+		if e.ExpectedType != "" && e.ActualType != "" {
+			baseMsg = fmt.Sprintf("%s (expected %s, got %s)", baseMsg, e.ExpectedType, e.ActualType)
+		}
 	}
-	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+
+	if e.Cause != nil {
+		return fmt.Sprintf("%s (caused by: %v)", baseMsg, e.Cause)
+	}
+	return baseMsg
+}
+
+// JSONPathErrorToConfigError converts a JSONPathError to a ConfigError
+func JSONPathErrorToConfigError(paramPath string, jpeErr *JSONPathError) *ConfigError {
+	if jpeErr == nil {
+		return nil
+	}
+
+	configErr := &ConfigError{
+		Path:      paramPath,
+		JSONPath:  jpeErr.JSONPath,
+		Cause:     jpeErr.Cause,
+		Message:   jpeErr.Message,
+	}
+
+	switch jpeErr.Type {
+	case "invalid_format":
+		configErr.Type = "json_error"
+		configErr.Message = fmt.Sprintf("invalid JSONPath format: %s", jpeErr.Message)
+	case "parse_error":
+		configErr.Type = "json_error"
+		configErr.Message = fmt.Sprintf("failed to parse JSON parameter: %s", jpeErr.Message)
+	case "key_not_found":
+		configErr.Type = "json_error"
+		configErr.Message = fmt.Sprintf("key not found in JSON: %s", jpeErr.Message)
+		// Extract available keys from error message if present
+		if jpeErr.AvailableKeys != nil {
+			configErr.AvailableKeys = jpeErr.AvailableKeys
+		}
+	case "type_mismatch":
+		configErr.Type = "json_error"
+		configErr.Message = fmt.Sprintf("type mismatch in JSON: %s", jpeErr.Message)
+		if jpeErr.ExpectedType != "" {
+			configErr.ExpectedType = jpeErr.ExpectedType
+		}
+		if jpeErr.ActualType != "" {
+			configErr.ActualType = jpeErr.ActualType
+		}
+	default:
+		configErr.Type = "json_error"
+		configErr.Message = jpeErr.Message
+	}
+
+	return configErr
 }
 
 func New(opts ...LoadOptions) *Loader {

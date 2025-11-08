@@ -28,12 +28,14 @@ Examples:
 
 
 var (
-	diffCompareStage string
-	diffStages       string
-	diffPath         string
-	diffKeysOnly     bool
-	diffShowSecrets  bool
+	diffCompareStage   string
+	diffStages         string
+	diffPath           string
+	diffKeysOnly       bool
+	diffShowSecrets    bool
 	diffCompareProfile string
+	diffNoJSONDiff     bool
+	diffJSONExpand     bool
 )
 
 func init() {
@@ -45,6 +47,8 @@ func init() {
 	diffCmd.Flags().BoolVar(&diffKeysOnly, "keys-only", false, "Show only parameter names without values")
 	diffCmd.Flags().BoolVar(&diffShowSecrets, "show-secrets", false, "Show SecureString parameter values (DANGEROUS)")
 	diffCmd.Flags().StringVar(&diffCompareProfile, "compare-profile", "", "AWS profile for comparison target")
+	diffCmd.Flags().BoolVar(&diffNoJSONDiff, "no-json-diff", false, "Disable JSON attribute-level diff (use string comparison)")
+	diffCmd.Flags().BoolVar(&diffJSONExpand, "json-expand", false, "Expand JSON attributes in multi-stage diff table")
 }
 
 func runDiffPsCommand(cmd *cobra.Command, args []string) error {
@@ -84,8 +88,20 @@ func runDiffPsCommand(cmd *cobra.Command, args []string) error {
 	stageResolver1 := cfg.NewStageResolver(stage)
 	stageResolver2 := cfg.NewStageResolver(diffCompareStage)
 
-	resolvedPath1 := stageResolver1.ResolvePath(comparePath)
-	resolvedPath2 := stageResolver2.ResolvePath(comparePath)
+	// 比較パスにステージプレースホルダーがない場合、追加する
+	// これにより、diff での stage 別パラメータ取得が正しく機能する
+	pathForDiff := comparePath
+	if !strings.Contains(pathForDiff, "{stage}") {
+		// パスに {stage} が含まれていない場合、パスの末尾に応じて追加
+		if strings.HasSuffix(pathForDiff, "/") {
+			pathForDiff = pathForDiff + "{stage}/"
+		} else {
+			pathForDiff = pathForDiff + "/{stage}"
+		}
+	}
+
+	resolvedPath1 := stageResolver1.ResolvePath(pathForDiff)
+	resolvedPath2 := stageResolver2.ResolvePath(pathForDiff)
 
 	// Get parameter infos for both stages
 	ctx := context.Background()
@@ -259,20 +275,39 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 			if keysOnly {
 				fmt.Printf("~ %s\n", key)
 			} else {
-				// Show actual resolved parameter paths for each stage
-				param1Path := param1.Name
-				param2Path := param2.Name
-				fmt.Printf("--- %s (%s)\n", param1Path, stage1)
-				fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
-				fmt.Printf("@@ -1 +1 @@\n")
-				if (param1.Type == "SecureString" || param2.Type == "SecureString") && !showSecrets {
-					fmt.Printf("-***masked secret***\n")
-					fmt.Printf("+***masked secret***\n")
-				} else {
-					fmt.Printf("-%s\n", param1.Value)
-					fmt.Printf("+%s\n", param2.Value)
+				// Try JSON diff if not disabled and not keys-only mode
+				var jsonDiffOutput string
+				if !diffNoJSONDiff {
+					diff, err := CompareParameters(param1, param2, diffNoJSONDiff)
+					if err == nil && diff != nil {
+						// JSON diff succeeded
+						if param1.Type == "SecureString" || param2.Type == "SecureString" {
+							jsonDiffOutput = FormatJSONDiffOutputSecure(param1.Name, stage1, stage2, *diff, showSecrets, param1.Type)
+						} else {
+							jsonDiffOutput = FormatJSONDiffOutput(param1.Name, stage1, stage2, *diff, showSecrets)
+						}
+					}
 				}
-				fmt.Println()
+
+				// If JSON diff was successful, use it; otherwise fall back to string comparison
+				if jsonDiffOutput != "" {
+					fmt.Print(jsonDiffOutput)
+				} else {
+					// Fall back to string comparison
+					param1Path := param1.Name
+					param2Path := param2.Name
+					fmt.Printf("--- %s (%s)\n", param1Path, stage1)
+					fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
+					fmt.Printf("@@ -1 +1 @@\n")
+					if (param1.Type == "SecureString" || param2.Type == "SecureString") && !showSecrets {
+						fmt.Printf("-***masked secret***\n")
+						fmt.Printf("+***masked secret***\n")
+					} else {
+						fmt.Printf("-%s\n", param1.Value)
+						fmt.Printf("+%s\n", param2.Value)
+					}
+					fmt.Println()
+				}
 			}
 		}
 	}
@@ -419,18 +454,29 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 
 		for _, key := range sortedKeys {
 			fmt.Printf("%-50s", key)
-			
+
 			for _, stage := range stages {
 				params := stageParams[stage]
 				if param, exists := params[key]; exists {
 					if param.Type == "SecureString" && !showSecrets {
 						fmt.Printf(" %-32s", "***masked secret***")
 					} else {
-						truncatedValue := param.Value
-						if len(param.Value) > 29 {
-							truncatedValue = param.Value[:29] + "..."
+						displayValue := param.Value
+
+						// JSON の場合、長い値はサマリー表示
+						if len(param.Value) > 1000 {
+							// JSON かどうかチェックして、サマリー表示
+							summary := FormatJSONSummary(param.Value)
+							if len(summary) < len(param.Value) {
+								displayValue = summary
+							}
 						}
-						fmt.Printf(" %-32s", truncatedValue)
+
+						// それでも長い場合は truncate
+						if len(displayValue) > 29 {
+							displayValue = displayValue[:29] + "..."
+						}
+						fmt.Printf(" %-32s", displayValue)
 					}
 				} else {
 					fmt.Printf(" %-32s", "-")

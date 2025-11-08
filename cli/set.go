@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -17,11 +18,18 @@ var setCmd = &cobra.Command{
 	Short: "Set a parameter value in Parameter Store",
 	Long: `Set a parameter value in AWS Parameter Store.
 The parameter path supports {stage} placeholder which will be replaced with the current stage.
+JSON values can be set using --json flag, either from file or as inline JSON string.
+JSON values can be stored as either String (default) or SecureString (--SS) for encrypted storage.
+Note: JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.
 
 Examples:
   cfgctl set /app/{stage}/db/password --stage=prod --SS
   cfgctl set /app/prod/api/timeout "30" -S --no-interactive
-  cfgctl set /app/{stage}/db/password --SS`,
+  cfgctl set /app/{stage}/db/password --SS
+  cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}'
+  cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}' --SS
+  cfgctl set /app/prod/config --json-file=config.json
+  cfgctl set /app/prod/config --json-file=config.json --SS`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runSetCommand,
 }
@@ -34,6 +42,9 @@ var (
 	setTypeString  bool
 	setTypeSecure  bool
 	setTypeList    bool
+	setJsonValue   string
+	setJsonFile    string
+	setJsonValidate bool
 )
 
 func init() {
@@ -45,7 +56,10 @@ func init() {
 	setCmd.Flags().BoolVar(&setOverwrite, "overwrite", false, "Overwrite existing parameter without confirmation")
 	setCmd.Flags().BoolVar(&setInteractive, "no-interactive", false, "Disable interactive mode (default: interactive)")
 	setCmd.Flags().StringVar(&setKMSKeyID, "kms-key", "", "KMS key ID for SecureString parameters (default: alias/aws/ssm)")
-	
+	setCmd.Flags().StringVar(&setJsonValue, "json", "", "Set value as JSON string (inline JSON)")
+	setCmd.Flags().StringVar(&setJsonFile, "json-file", "", "Set value as JSON from file")
+	setCmd.Flags().BoolVar(&setJsonValidate, "json-validate", true, "Validate JSON format (default: true)")
+
 	// Mark flags as mutually exclusive
 	setCmd.MarkFlagsMutuallyExclusive("type", "string", "SS", "SL")
 }
@@ -54,34 +68,65 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	parameterPath := args[0]
 	var value string
 
-	// Determine parameter type from flags
-	if setTypeString {
-		setType = "String"
-	} else if setTypeSecure {
-		setType = "SecureString"
-	} else if setTypeList {
-		setType = "StringList"
-	} else {
-		// Normalize the type from --type flag
-		normalizedType, err := normalizeParameterType(setType)
-		if err != nil {
-			return err
+	// Handle JSON input first
+	if setJsonValue != "" || setJsonFile != "" {
+		// Validate that JSON is not being stored as StringList
+		if setTypeList {
+			return fmt.Errorf("JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.")
 		}
-		setType = normalizedType
-	}
 
-	// Handle interactive mode or value from args
-	if !setInteractive && len(args) < 2 {
-		// Interactive mode by default
-		var err error
-		value, err = promptForValue(parameterPath, setType == "SecureString")
+		jsonValue, err := getJsonValue()
 		if err != nil {
-			return fmt.Errorf("failed to get value interactively: %w", err)
+			return fmt.Errorf("failed to get JSON value: %w", err)
 		}
-	} else if len(args) >= 2 {
-		value = args[1]
+
+		// Validate JSON if requested
+		if setJsonValidate {
+			if err := validateJsonString(jsonValue); err != nil {
+				return fmt.Errorf("JSON validation failed: %w", err)
+			}
+		}
+
+		value = jsonValue
+		// Determine type for JSON values based on flags
+		if setTypeSecure {
+			setType = "SecureString"
+		} else if setTypeString {
+			setType = "String"
+		} else {
+			// Default to String if no type is explicitly specified
+			setType = "String"
+		}
 	} else {
-		return fmt.Errorf("value is required when using --no-interactive mode")
+		// Determine parameter type from flags
+		if setTypeString {
+			setType = "String"
+		} else if setTypeSecure {
+			setType = "SecureString"
+		} else if setTypeList {
+			setType = "StringList"
+		} else {
+			// Normalize the type from --type flag
+			normalizedType, err := normalizeParameterType(setType)
+			if err != nil {
+				return err
+			}
+			setType = normalizedType
+		}
+
+		// Handle interactive mode or value from args
+		if !setInteractive && len(args) < 2 {
+			// Interactive mode by default
+			var err error
+			value, err = promptForValue(parameterPath, setType == "SecureString")
+			if err != nil {
+				return fmt.Errorf("failed to get value interactively: %w", err)
+			}
+		} else if len(args) >= 2 {
+			value = args[1]
+		} else {
+			return fmt.Errorf("value is required when using --no-interactive mode")
+		}
 	}
 
 	// Create AWS client
@@ -103,14 +148,36 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	
 	if parameterExists {
 		fmt.Printf("Parameter %s already exists.\n", resolvedPath)
-		
+
 		// Show diff (hide values for secrets)
 		if setType == "SecureString" {
 			fmt.Println("Current value: [HIDDEN]")
 			fmt.Println("New value:     [HIDDEN]")
 		} else {
-			fmt.Printf("Current value: %s\n", existingValue)
-			fmt.Printf("New value:     %s\n", value)
+			// Try to format as JSON for better readability
+			currentFormatted, err1 := formatJsonForDisplay(existingValue)
+			newFormatted, err2 := formatJsonForDisplay(value)
+
+			if err1 == nil && err2 == nil {
+				// Both are valid JSON, show formatted
+				fmt.Println("Current value (JSON):")
+				fmt.Println(currentFormatted)
+				fmt.Println("\nNew value (JSON):")
+				fmt.Println(newFormatted)
+			} else {
+				// Show as plain text
+				if len(existingValue) > 200 {
+					fmt.Printf("Current value: %s...\n", existingValue[:200])
+				} else {
+					fmt.Printf("Current value: %s\n", existingValue)
+				}
+
+				if len(value) > 200 {
+					fmt.Printf("New value: %s...\n", value[:200])
+				} else {
+					fmt.Printf("New value: %s\n", value)
+				}
+			}
 		}
 
 		// Ask for confirmation unless --overwrite flag is used
@@ -221,4 +288,44 @@ func normalizeParameterType(paramType string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid parameter type: %s. Valid types: String, SecureString, StringList", paramType)
 	}
+}
+
+// getJsonValue retrieves JSON value from file or inline string
+func getJsonValue() (string, error) {
+	if setJsonFile != "" {
+		// Read from file
+		content, err := os.ReadFile(setJsonFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to read JSON file %s: %w", setJsonFile, err)
+		}
+		return string(content), nil
+	} else if setJsonValue != "" {
+		// Use inline JSON
+		return setJsonValue, nil
+	}
+	return "", fmt.Errorf("no JSON value provided (use --json or --json-file)")
+}
+
+// validateJsonString validates that a string is valid JSON
+func validateJsonString(jsonStr string) error {
+	var obj interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+// formatJsonForDisplay returns pretty-printed JSON for display purposes
+func formatJsonForDisplay(jsonStr string) (string, error) {
+	var obj interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+		return "", err
+	}
+
+	formatted, err := json.MarshalIndent(obj, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(formatted), nil
 }

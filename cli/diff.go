@@ -442,18 +442,29 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 
 		for _, key := range sortedKeys {
 			fmt.Printf("%-50s", key)
-			
+
 			for _, stage := range stages {
 				params := stageParams[stage]
 				if param, exists := params[key]; exists {
 					if param.Type == "SecureString" && !showSecrets {
 						fmt.Printf(" %-32s", "***masked secret***")
 					} else {
-						truncatedValue := param.Value
-						if len(param.Value) > 29 {
-							truncatedValue = param.Value[:29] + "..."
+						displayValue := param.Value
+
+						// JSON の場合、長い値はサマリー表示
+						if len(param.Value) > 1000 {
+							// JSON かどうかチェックして、サマリー表示
+							summary := FormatJSONSummary(param.Value)
+							if len(summary) < len(param.Value) {
+								displayValue = summary
+							}
 						}
-						fmt.Printf(" %-32s", truncatedValue)
+
+						// それでも長い場合は truncate
+						if len(displayValue) > 29 {
+							displayValue = displayValue[:29] + "..."
+						}
+						fmt.Printf(" %-32s", displayValue)
 					}
 				} else {
 					fmt.Printf(" %-32s", "-")

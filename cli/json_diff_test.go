@@ -1294,6 +1294,79 @@ func TestFormatJSONDiffOutput_WithSecureString(t *testing.T) {
 	}
 }
 
+// TestFormatJSONSummary_KeyCount は JSON キー数のサマリー表示をテスト（タスク 6.1）
+func TestFormatJSONSummary_KeyCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected string
+	}{
+		{
+			name:     "simple object with 3 keys",
+			json:     `{"host": "localhost", "port": 5432, "database": "mydb"}`,
+			expected: "[JSON: 3 keys]",
+		},
+		{
+			name:     "nested object",
+			json:     `{"database": {"host": "localhost", "port": 5432}, "enabled": true}`,
+			expected: "[JSON: 3 keys]", // フラット化後は3つ
+		},
+		{
+			name:     "single key",
+			json:     `{"value": "test"}`,
+			expected: "[JSON: 1 key]",
+		},
+		{
+			name:     "empty object",
+			json:     `{}`,
+			expected: "[JSON: 0 keys]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatJSONSummary(tt.json)
+			if result != tt.expected {
+				t.Errorf("FormatJSONSummary() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFormatJSONSummary_LongValue は 1000 文字を超える JSON のサマリー表示をテスト（タスク 6.1）
+func TestFormatJSONSummary_LongValue(t *testing.T) {
+	// 1000 文字を超える JSON を生成
+	longValue := make([]byte, 1500)
+	for i := range longValue {
+		longValue[i] = 'a'
+	}
+	json := `{"data": "` + string(longValue) + `"}`
+
+	result := FormatJSONSummary(json)
+
+	// サマリー形式で表示されることを確認
+	if !contains(result, "[JSON:") || !contains(result, "key") {
+		t.Errorf("Expected JSON summary format, got: %s", result)
+	}
+
+	// 元の JSON 全体が含まれていないことを確認
+	if len(result) > 100 {
+		t.Errorf("Summary should be short, but got length: %d", len(result))
+	}
+}
+
+// TestFormatJSONSummary_InvalidJSON は無効な JSON の処理をテスト（タスク 6.1）
+func TestFormatJSONSummary_InvalidJSON(t *testing.T) {
+	invalidJSON := `{invalid json}`
+
+	result := FormatJSONSummary(invalidJSON)
+
+	// 無効な JSON の場合は元の値（truncate 済み）を返す
+	if result == "" {
+		t.Error("Expected some output for invalid JSON")
+	}
+}
+
 // ========== Task 7: Error Handling and Logging ==========
 
 // TestCompareParameters_BothInvalidJSON_WarningMessage は両方無効な JSON の警告メッセージをテスト（タスク 7.1）

@@ -293,6 +293,32 @@ func FormatJSONDiffOutputSecure(paramName, stage1, stage2 string, diff JSONDiff,
 	return output
 }
 
+// FormatJSONSummary は JSON 値のサマリーを生成する
+// 長い JSON や複雑な JSON に対して [JSON: N keys] 形式で表示
+func FormatJSONSummary(jsonStr string) string {
+	// JSON としてパースを試行
+	var obj map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &obj)
+
+	if err != nil {
+		// 無効な JSON の場合は truncate して返す
+		if len(jsonStr) > 50 {
+			return jsonStr[:50] + "..."
+		}
+		return jsonStr
+	}
+
+	// JSON をフラット化してキー数をカウント
+	flattened := flattenJSON(obj, "")
+	keyCount := len(flattened)
+
+	// キー数に応じて単数/複数形を使い分け
+	if keyCount == 1 {
+		return "[JSON: 1 key]"
+	}
+	return fmt.Sprintf("[JSON: %d keys]", keyCount)
+}
+
 // CompareParameters は 2 つの Parameter を比較し、JSON 差分または nil を返す
 // JSON 検出失敗時は nil を返し、呼び出し元は文字列比較にフォールバックする
 func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSONDiff, error) {

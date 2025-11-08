@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/reiki4040/cfg/aws"
@@ -2041,5 +2042,241 @@ func TestErrorLogging_ExitCode(t *testing.T) {
 	}
 	if diff != nil {
 		t.Error("Expected nil for invalid JSON (fallback), got diff")
+	}
+}
+
+// Task 8.3: エッジケーステストと境界値テスト
+// TestEdgeCase_EmptyJSON は空の JSON オブジェクト `{}` をテスト
+func TestEdgeCase_EmptyJSON(t *testing.T) {
+	param1 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{}`,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{}`,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	if err != nil {
+		t.Errorf("Expected no error for empty JSON, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for empty JSON, got nil")
+	}
+
+	// 空のオブジェクトなので差分がない
+	if len(diff.Added) != 0 || len(diff.Removed) != 0 || len(diff.Modified) != 0 {
+		t.Error("Expected no differences for identical empty JSON objects")
+	}
+}
+
+// TestEdgeCase_ExactlyTenMB は 10MB ちょうどの JSON をテスト
+func TestEdgeCase_ExactlyTenMB(t *testing.T) {
+	// 10MB ちょうどのデータを作成
+	// フレーム: {"data":"..." (10MB)} -> 約 10,485,760 バイト
+	targetSize := 10 * 1024 * 1024
+
+	// オーバーヘッド分を計算
+	overhead := len(`{"data":""}`)
+	contentSize := targetSize - overhead
+
+	// 'a' を contentSize 個繰り返す
+	largeContent := `{"data":"` + strings.Repeat("a", contentSize) + `"}`
+
+	param1 := aws.ParameterInfo{
+		Name:  "/large/config",
+		Value: largeContent,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/large/config",
+		Value: largeContent,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// 10MB ちょうどは処理成功
+	if err != nil {
+		t.Errorf("Expected no error for 10MB JSON, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for 10MB JSON, got nil")
+	}
+}
+
+// TestEdgeCase_ExceedsTenMB は 10MB + 1 バイトの JSON がフォールバックすることをテスト
+func TestEdgeCase_ExceedsTenMB(t *testing.T) {
+	// 10MB + 1 バイトのデータを作成
+	targetSize := 10*1024*1024 + 1
+
+	overhead := len(`{"data":""}`)
+	contentSize := targetSize - overhead
+
+	largeContent := `{"data":"` + strings.Repeat("a", contentSize) + `"}`
+
+	param1 := aws.ParameterInfo{
+		Name:  "/very-large/config",
+		Value: largeContent,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/very-large/config",
+		Value: largeContent,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	// 10MB 超過は nil を返す（フォールバック）
+	if err != nil {
+		t.Errorf("Expected no error (graceful fallback), got %v", err)
+	}
+	if diff != nil {
+		t.Error("Expected nil for JSON exceeding 10MB, got diff")
+	}
+}
+
+// TestEdgeCase_ExactlyThousandAttributes は 1000 属性ちょうどの JSON をテスト
+func TestEdgeCase_ExactlyThousandAttributes(t *testing.T) {
+	// 1000 属性の JSON を構築
+	var data map[string]interface{} = make(map[string]interface{})
+	for i := 0; i < 1000; i++ {
+		data[fmt.Sprintf("attr_%04d", i)] = fmt.Sprintf("value_%d", i)
+	}
+
+	jsonStr, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	param1 := aws.ParameterInfo{
+		Name:  "/app/config-1000",
+		Value: string(jsonStr),
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/config-1000",
+		Value: string(jsonStr),
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	if err != nil {
+		t.Errorf("Expected no error for 1000 attributes, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for 1000 attributes, got nil")
+	}
+}
+
+// TestEdgeCase_DeepNesting は 10 階層のネスト構造をテスト
+func TestEdgeCase_DeepNesting(t *testing.T) {
+	// 10 階層のネスト構造を構築
+	current := map[string]interface{}{"value": "deep"}
+	for i := 0; i < 9; i++ {
+		current = map[string]interface{}{fmt.Sprintf("level_%d", i): current}
+	}
+
+	jsonStr, err := json.Marshal(current)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	param1 := aws.ParameterInfo{
+		Name:  "/deep/config",
+		Value: string(jsonStr),
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/deep/config",
+		Value: string(jsonStr),
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	if err != nil {
+		t.Errorf("Expected no error for 10-level nesting, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for 10-level nesting, got nil")
+	}
+}
+
+// TestEdgeCase_SpecialCharactersInKeys は特殊文字を含むキーのテスト
+func TestEdgeCase_SpecialCharactersInKeys(t *testing.T) {
+	param1 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"key.with.dots": "value1", "key/with/slashes": "value2", "key-with-dashes": "value3"}`,
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/app/config",
+		Value: `{"key.with.dots": "value1", "key/with/slashes": "value2", "key-with-dashes": "value3"}`,
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	if err != nil {
+		t.Errorf("Expected no error for special characters in keys, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for special characters, got nil")
+	}
+}
+
+// TestEdgeCase_MixedTypeValues は混合型の値をテスト
+func TestEdgeCase_MixedTypeValues(t *testing.T) {
+	obj1 := map[string]interface{}{
+		"string":  "text",
+		"number":  float64(42),
+		"boolean": true,
+		"null":    nil,
+		"array":   []interface{}{1.0, 2.0, 3.0},
+		"object":  map[string]interface{}{"nested": "value"},
+	}
+
+	obj2 := map[string]interface{}{
+		"string":  "text",
+		"number":  float64(42),
+		"boolean": true,
+		"null":    nil,
+		"array":   []interface{}{1.0, 2.0, 3.0},
+		"object":  map[string]interface{}{"nested": "value"},
+	}
+
+	jsonStr1, _ := json.Marshal(obj1)
+	jsonStr2, _ := json.Marshal(obj2)
+
+	param1 := aws.ParameterInfo{
+		Name:  "/mixed/config",
+		Value: string(jsonStr1),
+		Type:  "String",
+	}
+	param2 := aws.ParameterInfo{
+		Name:  "/mixed/config",
+		Value: string(jsonStr2),
+		Type:  "String",
+	}
+
+	diff, err := CompareParameters(param1, param2, false)
+
+	if err != nil {
+		t.Errorf("Expected no error for mixed types, got %v", err)
+	}
+	if diff == nil {
+		t.Error("Expected diff result for mixed types, got nil")
+	}
+
+	// 同じ値なので差分がない
+	if len(diff.Added) != 0 || len(diff.Removed) != 0 || len(diff.Modified) != 0 {
+		t.Error("Expected no differences for identical mixed-type objects")
 	}
 }

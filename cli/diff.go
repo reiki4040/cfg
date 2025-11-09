@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"github.com/reiki4040/cfg/aws"
 	"github.com/reiki4040/cfg"
+	"github.com/reiki4040/cfg/aws"
+	"github.com/spf13/cobra"
 )
 
 var diffCmd = &cobra.Command{
@@ -39,8 +39,6 @@ Examples:
   cfgctl diff --stage=dev --compare-stage=stg --color=never`,
 	RunE: runDiffPsCommand,
 }
-
-
 
 var (
 	diffCompareStage   string
@@ -211,7 +209,6 @@ func runMultiStageDiff() error {
 
 	return nil
 }
-
 
 func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, paramInfos2 []aws.ParameterInfo, path string, keysOnly bool, showSecrets bool) {
 	// Create maps organized by normalized key (removing stage-specific parts)
@@ -534,7 +531,7 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 		// Keys only mode - just show parameter names
 		fmt.Printf("Parameters (path: %s)\n", path)
 		fmt.Printf("Stages: %s\n\n", strings.Join(stages, ", "))
-		
+
 		for _, key := range sortedKeys {
 			fmt.Println(key)
 		}
@@ -723,7 +720,7 @@ func displayMultiStageDiff(stages []string, stageParams map[string]map[string]st
 
 	for _, key := range sortedKeys {
 		fmt.Printf("%-50s", key)
-		
+
 		for _, stage := range stages {
 			params := stageParams[stage]
 			if value, exists := params[key]; exists {
@@ -773,7 +770,8 @@ func isJSONValue(value string) bool {
 
 // flattenJSONForDisplay: JSON値をJSONPath形式でフラット化して表示用文字列に変換
 // 例: {"key1":{"sub1":"value1"},"key2":"value2"}
-//  -> "key1.sub1: value1 | key2: value2"
+//
+//	-> "key1.sub1: value1 | key2: value2"
 func flattenJSONForDisplay(jsonValue string) string {
 	var obj interface{}
 	err := json.Unmarshal([]byte(jsonValue), &obj)

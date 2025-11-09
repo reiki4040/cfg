@@ -22,6 +22,8 @@ JSON values can be set using --json flag, either from file or as inline JSON str
 JSON values can be stored as either String (default) or SecureString (--SS) for encrypted storage.
 Note: JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.
 
+Use --dry-run flag to preview changes without actually modifying Parameter Store.
+
 Examples:
   cfgctl set /app/{stage}/db/password --stage=prod --SS
   cfgctl set /app/prod/api/timeout "30" -S --no-interactive
@@ -29,22 +31,24 @@ Examples:
   cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}'
   cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}' --SS
   cfgctl set /app/prod/config --json-file=config.json
-  cfgctl set /app/prod/config --json-file=config.json --SS`,
+  cfgctl set /app/prod/config --json-file=config.json --SS
+  cfgctl set /app/prod/config --json='{"host":"newhost"}' --dry-run`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runSetCommand,
 }
 
 var (
-	setType        string
-	setOverwrite   bool
-	setInteractive bool
-	setKMSKeyID    string
-	setTypeString  bool
-	setTypeSecure  bool
-	setTypeList    bool
-	setJsonValue   string
-	setJsonFile    string
+	setType         string
+	setOverwrite    bool
+	setInteractive  bool
+	setKMSKeyID     string
+	setTypeString   bool
+	setTypeSecure   bool
+	setTypeList     bool
+	setJsonValue    string
+	setJsonFile     string
 	setJsonValidate bool
+	setDryRun       bool
 )
 
 func init() {
@@ -59,6 +63,7 @@ func init() {
 	setCmd.Flags().StringVar(&setJsonValue, "json", "", "Set value as JSON string (inline JSON)")
 	setCmd.Flags().StringVar(&setJsonFile, "json-file", "", "Set value as JSON from file")
 	setCmd.Flags().BoolVar(&setJsonValidate, "json-validate", true, "Validate JSON format (default: true)")
+	setCmd.Flags().BoolVar(&setDryRun, "dry-run", false, "Preview changes without actually setting the parameter (show diff and exit)")
 
 	// Mark flags as mutually exclusive
 	setCmd.MarkFlagsMutuallyExclusive("type", "string", "SS", "SL")
@@ -139,13 +144,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	stageResolver := createStageResolver()
 	resolvedPath := resolveParameterPath(parameterPath, stageResolver)
 
-
 	ctx := context.Background()
 
 	// Check if parameter already exists and show diff
 	existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
 	parameterExists := (err == nil)
-	
+
 	if parameterExists {
 		fmt.Printf("Parameter %s already exists.\n", resolvedPath)
 
@@ -193,6 +197,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// If dry-run mode, exit here without making actual changes
+	if setDryRun {
+		fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+		return nil
+	}
+
 	// Determine KMS key to use
 	kmsKey := setKMSKeyID
 	if kmsKey == "" && setType == "SecureString" {
@@ -226,20 +236,20 @@ func promptForValue(parameterPath string, isSecret bool) (string, error) {
 		if !term.IsTerminal(int(syscall.Stdin)) {
 			return "", fmt.Errorf("secure input requires an interactive terminal")
 		}
-		
+
 		// Hide input for secure strings
 		byteValue, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
 			return "", fmt.Errorf("failed to read secure input: %w", err)
 		}
 		fmt.Println() // Print newline after hidden input
-		
+
 		// Validate minimum length for security
 		value := string(byteValue)
 		if len(value) == 0 {
 			return "", fmt.Errorf("secure parameter value cannot be empty")
 		}
-		
+
 		return value, nil
 	} else {
 		// Normal input for non-secure strings
@@ -254,7 +264,7 @@ func promptForValue(parameterPath string, isSecret bool) (string, error) {
 
 func confirmOverwrite(parameterPath string) (bool, error) {
 	fmt.Printf("Are you sure you want to overwrite parameter '%s'? (y/N): ", parameterPath)
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -328,4 +338,59 @@ func formatJsonForDisplay(jsonStr string) (string, error) {
 	}
 
 	return string(formatted), nil
+}
+
+// showJsonAttributeDiff displays a diff of JSON attribute changes
+// when updating a specific JSON path within a parameter
+func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
+	var oldObj, newObj interface{}
+
+	// Parse both JSON values
+	if err := json.Unmarshal([]byte(oldJSON), &oldObj); err != nil {
+		return fmt.Errorf("failed to parse old JSON: %w", err)
+	}
+	if err := json.Unmarshal([]byte(newJSON), &newObj); err != nil {
+		return fmt.Errorf("failed to parse new JSON: %w", err)
+	}
+
+	// Display JSON attribute differences
+	fmt.Println("\n[JSON Attribute Diff]")
+	fmt.Printf("Path: %s\n", jsonPath)
+
+	oldFormatted, _ := json.MarshalIndent(oldObj, "", "  ")
+	newFormatted, _ := json.MarshalIndent(newObj, "", "  ")
+
+	oldLines := strings.Split(string(oldFormatted), "\n")
+	newLines := strings.Split(string(newFormatted), "\n")
+
+	// Simple line-by-line diff display
+	maxLines := len(oldLines)
+	if len(newLines) > maxLines {
+		maxLines = len(newLines)
+	}
+
+	for i := 0; i < maxLines; i++ {
+		oldLine := ""
+		newLine := ""
+
+		if i < len(oldLines) {
+			oldLine = oldLines[i]
+		}
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+
+		if oldLine != newLine {
+			if oldLine != "" {
+				fmt.Printf("- %s\n", oldLine)
+			}
+			if newLine != "" {
+				fmt.Printf("+ %s\n", newLine)
+			}
+		} else if oldLine != "" {
+			fmt.Printf("  %s\n", oldLine)
+		}
+	}
+
+	return nil
 }

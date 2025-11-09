@@ -73,9 +73,9 @@ func TestColorModePipeDetection(t *testing.T) {
 // TestColorModeOverride: フラグでの色モード制御
 func TestColorModeOverride(t *testing.T) {
 	tests := []struct {
-		mode    string
-		expect  bool
-		name    string
+		mode   string
+		expect bool
+		name   string
 	}{
 		{"always", true, "always mode overrides pipe detection"},
 		{"never", false, "never mode overrides TTY detection"},

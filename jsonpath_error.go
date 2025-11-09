@@ -57,11 +57,11 @@ func KeyNotFoundError(jsonPath string, parameter string, availableKeys []string)
 // TypeMismatchError creates an error when path traversal encounters a non-object type
 func TypeMismatchError(jsonPath string, parameter string, pathSegment string, foundType string) *JSONPathError {
 	return &JSONPathError{
-		Type:       "type_mismatch",
-		JSONPath:   jsonPath,
-		Parameter:  parameter,
-		Message:    fmt.Sprintf("cannot traverse key '%s' on %s type", pathSegment, foundType),
+		Type:         "type_mismatch",
+		JSONPath:     jsonPath,
+		Parameter:    parameter,
+		Message:      fmt.Sprintf("cannot traverse key '%s' on %s type", pathSegment, foundType),
 		ExpectedType: "object",
-		ActualType: foundType,
+		ActualType:   foundType,
 	}
 }

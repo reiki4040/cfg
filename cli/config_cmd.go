@@ -71,7 +71,7 @@ func init() {
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configUnsetCmd)
 	configCmd.AddCommand(configInitCmd)
-	
+
 	configSetCmd.Flags().BoolVar(&configInteractive, "interactive", false, "Interactive mode for value input")
 }
 
@@ -223,7 +223,7 @@ func configureKMSKeysInteractively(config *CfgctlConfig) error {
 				prompt += fmt.Sprintf(" [%s]", currentKey)
 			}
 			prompt += ": "
-			
+
 			fmt.Print(prompt)
 			kmsKey, err := promptForInput()
 			if err != nil {

@@ -25,14 +25,14 @@ type LoadOptions struct {
 }
 
 type ConfigError struct {
-	Type             string   // "missing_parameter", "aws_error", "parse_error", "json_error"
-	Path             string
-	Message          string
-	Cause            error
-	JSONPath         string   // JSONPath that failed (for json_error type)
-	AvailableKeys    []string // Available keys in the JSON object (for key_not_found)
-	ExpectedType     string   // Expected type in JSON (for type_mismatch)
-	ActualType       string   // Actual type found (for type_mismatch)
+	Type          string // "missing_parameter", "aws_error", "parse_error", "json_error"
+	Path          string
+	Message       string
+	Cause         error
+	JSONPath      string   // JSONPath that failed (for json_error type)
+	AvailableKeys []string // Available keys in the JSON object (for key_not_found)
+	ExpectedType  string   // Expected type in JSON (for type_mismatch)
+	ActualType    string   // Actual type found (for type_mismatch)
 }
 
 func (e *ConfigError) Error() string {
@@ -68,10 +68,10 @@ func JSONPathErrorToConfigError(paramPath string, jpeErr *JSONPathError) *Config
 	}
 
 	configErr := &ConfigError{
-		Path:      paramPath,
-		JSONPath:  jpeErr.JSONPath,
-		Cause:     jpeErr.Cause,
-		Message:   jpeErr.Message,
+		Path:     paramPath,
+		JSONPath: jpeErr.JSONPath,
+		Cause:    jpeErr.Cause,
+		Message:  jpeErr.Message,
 	}
 
 	switch jpeErr.Type {
@@ -116,13 +116,13 @@ func NewWithPrefix(pathPrefix string, opts ...LoadOptions) *Loader {
 	}
 
 	stageResolver := NewStageResolverWithPrefixBlanks(options.Stage, options.StagePrefixBlanks)
-	
+
 	// Resolve {stage} placeholder in path prefix
 	resolvedPathPrefix := stageResolver.ResolvePath(pathPrefix)
-	
+
 	var awsClient *aws.ParameterStoreClient
 	var err error
-	
+
 	// Only initialize AWS client if region is provided or can be determined
 	if options.AWSRegion != "" {
 		awsClient, err = aws.NewParameterStoreClient(context.Background(), options.AWSRegion)
@@ -231,12 +231,12 @@ func (l *Loader) SetAWSClient(awsClient *aws.ParameterStoreClient) {
 func validateConfigFilePath(path string) error {
 	// Clean and validate the path
 	cleanPath := filepath.Clean(path)
-	
+
 	// Check for path traversal attempts
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("path traversal not allowed")
 	}
-	
+
 	// Ensure absolute path or relative path in current directory
 	if !filepath.IsAbs(cleanPath) {
 		// Convert to absolute path to validate
@@ -246,7 +246,7 @@ func validateConfigFilePath(path string) error {
 		}
 		cleanPath = absPath
 	}
-	
+
 	// Check file extension for additional safety
 	ext := filepath.Ext(cleanPath)
 	allowedExts := []string{".yaml", ".yml", ".json"}
@@ -257,10 +257,10 @@ func validateConfigFilePath(path string) error {
 			break
 		}
 	}
-	
+
 	if !validExt {
 		return fmt.Errorf("unsupported file extension: %s (allowed: .yaml, .yml, .json)", ext)
 	}
-	
+
 	return nil
 }

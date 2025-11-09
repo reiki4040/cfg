@@ -9,11 +9,11 @@ import (
 )
 
 type CfgctlConfig struct {
-	DefaultRegion      string                    `yaml:"default_region"`
-	DefaultStage       string                    `yaml:"default_stage"`
-	PathPrefix         string                    `yaml:"path_prefix"`
-	KMSKeys            map[string]RegionKMSKeys  `yaml:"kms_keys"`
-	StagePrefixBlanks  []string                  `yaml:"stage_prefix_blanks"`
+	DefaultRegion     string                   `yaml:"default_region"`
+	DefaultStage      string                   `yaml:"default_stage"`
+	PathPrefix        string                   `yaml:"path_prefix"`
+	KMSKeys           map[string]RegionKMSKeys `yaml:"kms_keys"`
+	StagePrefixBlanks []string                 `yaml:"stage_prefix_blanks"`
 }
 
 type RegionKMSKeys struct {
@@ -126,7 +126,7 @@ func setKMSKeyForStageAndRegion(stage, region, kmsKey string) error {
 	if regionKeys.Stages == nil {
 		regionKeys.Stages = make(map[string]string)
 	}
-	
+
 	regionKeys.Stages[stage] = kmsKey
 	config.KMSKeys[region] = regionKeys
 

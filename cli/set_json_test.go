@@ -8,9 +8,9 @@ import (
 // TestValidateJsonString tests JSON validation
 func TestValidateJsonString(t *testing.T) {
 	testCases := []struct {
-		name    string
-		json    string
-		valid   bool
+		name        string
+		json        string
+		valid       bool
 		description string
 	}{
 		{
@@ -79,9 +79,9 @@ func TestValidateJsonString(t *testing.T) {
 // TestFormatJsonForDisplay tests JSON formatting for display
 func TestFormatJsonForDisplay(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    string
-		valid    bool
+		name  string
+		input string
+		valid bool
 	}{
 		{
 			name:  "compact_object",
@@ -313,9 +313,9 @@ func TestJsonStringListIncompatibility(t *testing.T) {
 // TestJsonSecureStringTypeSelection tests that JSON + SS flag selects SecureString type
 func TestJsonSecureStringTypeSelection(t *testing.T) {
 	testCases := []struct {
-		name        string
-		typeSecure  bool
-		typeString  bool
+		name         string
+		typeSecure   bool
+		typeString   bool
 		expectedType string
 	}{
 		{

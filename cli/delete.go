@@ -70,7 +70,7 @@ func runDeleteCommand(cmd *cobra.Command, args []string) error {
 
 func confirmDeletion(parameterPath string) (bool, error) {
 	fmt.Printf("Are you sure you want to delete parameter '%s'? (y/N): ", parameterPath)
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
 	if err != nil {

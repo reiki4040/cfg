@@ -135,10 +135,10 @@ func TestAllFlagsWithColor(t *testing.T) {
 // TestColorCodeStandards: Task 8.2 ANSI色コードの標準化確認
 func TestColorCodeStandards(t *testing.T) {
 	tests := []struct {
-		name        string
-		colorCode   string
+		name         string
+		colorCode    string
 		expectedCode string
-		description string
+		description  string
 	}{
 		{"Red", ColorRed, "\x1b[31m", "削除行の赤色"},
 		{"Green", ColorGreen, "\x1b[32m", "追加行の緑色"},
@@ -162,9 +162,9 @@ func TestColorCodeStandards(t *testing.T) {
 // TestFeatureCompleteness: Task 8.3 機能の完全性確認
 func TestFeatureCompleteness(t *testing.T) {
 	checklist := []struct {
-		feature         string
-		implemented     bool
-		description     string
+		feature     string
+		implemented bool
+		description string
 	}{
 		{"Color constants", true, "ANSI カラーコード定数"},
 		{"Terminal detection", true, "ターミナル判定機能"},
@@ -201,27 +201,27 @@ func TestFeatureCompleteness(t *testing.T) {
 // TestRequirementsCoverage: Task 8.1-8.3 要件カバレッジ確認
 func TestRequirementsCoverage(t *testing.T) {
 	requirements := map[string]bool{
-		"1.1 削除行を赤色表示":              true,
-		"1.2 追加行を緑色表示":              true,
-		"1.3 変更行を黄色表示":              true,
+		"1.1 削除行を赤色表示":            true,
+		"1.2 追加行を緑色表示":            true,
+		"1.3 変更行を黄色表示":            true,
 		"1.4 同一行をデフォルト色表示":        true,
 		"2.1 マルチステージテーブル表示":       true,
-		"2.2 異なる値を色強調":              true,
-		"2.3 同一値はデフォルト色":           true,
-		"2.4 欠落セルを視覚化":              true,
-		"3.1 JSON差分属性の色分け":         true,
+		"2.2 異なる値を色強調":            true,
+		"2.3 同一値はデフォルト色":          true,
+		"2.4 欠落セルを視覚化":            true,
+		"3.1 JSON差分属性の色分け":        true,
 		"3.2 ネストした属性でも色維持":        true,
 		"3.3 複数属性の変更を一貫した色":       true,
 		"4.1 ターミナル判定で自動無効化":       true,
-		"4.2 --color=always強制有効化":    true,
-		"4.3 --color=never強制無効化":     true,
-		"4.4 --color=auto自動判定":        true,
-		"5.1 SecureStringマスク色付き":    true,
-		"5.2 SecureString秘密値色付き":     true,
-		"5.3 マスク機能の保持":              true,
-		"6.1 ANSI ターミナル対応":         true,
-		"6.2 標準色定義の使用":             true,
-		"6.3 古いターミナル対応":            true,
+		"4.2 --color=always強制有効化": true,
+		"4.3 --color=never強制無効化":  true,
+		"4.4 --color=auto自動判定":    true,
+		"5.1 SecureStringマスク色付き":  true,
+		"5.2 SecureString秘密値色付き":  true,
+		"5.3 マスク機能の保持":            true,
+		"6.1 ANSI ターミナル対応":        true,
+		"6.2 標準色定義の使用":            true,
+		"6.3 古いターミナル対応":           true,
 	}
 
 	coveredCount := 0

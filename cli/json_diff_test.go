@@ -669,7 +669,7 @@ func TestCompareJSONObjects_SortedOutput(t *testing.T) {
 
 	// ソート済みであることを期待
 	expectedOrder := []string{"apple", "mango", "zebra"}
-	
+
 	// Go の map は順序を保証しないため、
 	// ここではソート機能が実装されているかを確認するために
 	// 後続の GetSortedDiffKeys 関数を使用する想定
@@ -1449,11 +1449,11 @@ func TestCompareParameters_SecondInvalidJSON_WarningMessage(t *testing.T) {
 // TestCompareParameters_TypeMismatchWarning は型不一致の警告をテスト（タスク 7.1）
 func TestCompareParameters_TypeMismatchWarning(t *testing.T) {
 	tests := []struct {
-		name         string
-		param1Value  string
-		param2Value  string
-		expectNil    bool
-		expectError  bool
+		name        string
+		param1Value string
+		param2Value string
+		expectNil   bool
+		expectError bool
 	}{
 		{
 			name:        "first JSON, second plain",

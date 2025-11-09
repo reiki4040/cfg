@@ -114,7 +114,7 @@ func colorizeJsonDiffLine(line string) string {
 	}
 
 	// ヘッダー行（---、+++、@@）を優先的に判定
-	if (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "@@")) {
+	if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "@@") {
 		return colorizeHeaderLine(line)
 	}
 

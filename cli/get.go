@@ -24,9 +24,9 @@ Examples:
 }
 
 var (
-	getDecrypt bool
+	getDecrypt  bool
 	getJsonPath string
-	getFormat  string
+	getFormat   string
 )
 
 func init() {

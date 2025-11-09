@@ -7,67 +7,67 @@ import (
 // Test 1.1: Regex pattern matching for JSONPath references
 func TestJsonPathReferenceRegexExtraction(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		shouldMatch   bool
-		expectedPath  string
-		expectedJSON  string
+		name         string
+		input        string
+		shouldMatch  bool
+		expectedPath string
+		expectedJSON string
 	}{
 		{
-			name:          "simple single-level key",
-			input:         "${ps:/config:password}",
-			shouldMatch:   true,
-			expectedPath:  "/config",
-			expectedJSON:  "password",
+			name:         "simple single-level key",
+			input:        "${ps:/config:password}",
+			shouldMatch:  true,
+			expectedPath: "/config",
+			expectedJSON: "password",
 		},
 		{
-			name:          "nested key path",
-			input:         "${ps:/config:database.password}",
-			shouldMatch:   true,
-			expectedPath:  "/config",
-			expectedJSON:  "database.password",
+			name:         "nested key path",
+			input:        "${ps:/config:database.password}",
+			shouldMatch:  true,
+			expectedPath: "/config",
+			expectedJSON: "database.password",
 		},
 		{
-			name:          "deeply nested key path",
-			input:         "${ps:/app-config:db.primary.host}",
-			shouldMatch:   true,
-			expectedPath:  "/app-config",
-			expectedJSON:  "db.primary.host",
+			name:         "deeply nested key path",
+			input:        "${ps:/app-config:db.primary.host}",
+			shouldMatch:  true,
+			expectedPath: "/app-config",
+			expectedJSON: "db.primary.host",
 		},
 		{
-			name:          "with stage placeholder",
-			input:         "${ps:/app-{stage}-config:api.key}",
-			shouldMatch:   true,
-			expectedPath:  "/app-{stage}-config",
-			expectedJSON:  "api.key",
+			name:         "with stage placeholder",
+			input:        "${ps:/app-{stage}-config:api.key}",
+			shouldMatch:  true,
+			expectedPath: "/app-{stage}-config",
+			expectedJSON: "api.key",
 		},
 		{
-			name:          "traditional ps reference without jsonpath",
-			input:         "${ps:/simple/path}",
-			shouldMatch:   true,
-			expectedPath:  "/simple/path",
-			expectedJSON:  "",
+			name:         "traditional ps reference without jsonpath",
+			input:        "${ps:/simple/path}",
+			shouldMatch:  true,
+			expectedPath: "/simple/path",
+			expectedJSON: "",
 		},
 		{
-			name:          "empty jsonpath after colon",
-			input:         "${ps:/config:}",
-			shouldMatch:   true,
-			expectedPath:  "/config",
-			expectedJSON:  "",
+			name:         "empty jsonpath after colon",
+			input:        "${ps:/config:}",
+			shouldMatch:  true,
+			expectedPath: "/config",
+			expectedJSON: "",
 		},
 		{
-			name:          "jsonpath with underscores",
-			input:         "${ps:/config:db_password}",
-			shouldMatch:   true,
-			expectedPath:  "/config",
-			expectedJSON:  "db_password",
+			name:         "jsonpath with underscores",
+			input:        "${ps:/config:db_password}",
+			shouldMatch:  true,
+			expectedPath: "/config",
+			expectedJSON: "db_password",
 		},
 		{
-			name:          "jsonpath with numbers",
-			input:         "${ps:/config:key123.sub456}",
-			shouldMatch:   true,
-			expectedPath:  "/config",
-			expectedJSON:  "key123.sub456",
+			name:         "jsonpath with numbers",
+			input:        "${ps:/config:key123.sub456}",
+			shouldMatch:  true,
+			expectedPath: "/config",
+			expectedJSON: "key123.sub456",
 		},
 	}
 
@@ -103,10 +103,10 @@ func TestJsonPathReferenceRegexExtraction(t *testing.T) {
 // Test 1.5: JSONPath format validation
 func TestJsonPathFormatValidation(t *testing.T) {
 	tests := []struct {
-		name      string
-		jsonPath  string
-		isValid   bool
-		reason    string
+		name     string
+		jsonPath string
+		isValid  bool
+		reason   string
 	}{
 		{
 			name:     "simple key",
@@ -199,12 +199,12 @@ func TestJsonPathValueExtraction(t *testing.T) {
 	extractor := NewJsonPathExtractor()
 
 	tests := []struct {
-		name         string
-		jsonStr      string
-		jsonPath     string
-		expected     string
-		shouldError  bool
-		errorType    string
+		name        string
+		jsonStr     string
+		jsonPath    string
+		expected    string
+		shouldError bool
+		errorType   string
 	}{
 		{
 			name:     "simple string key",

@@ -38,7 +38,7 @@ func (p *Parser) ParseAndInterpolate(ctx context.Context, yamlData []byte) (map[
 
 	// Extract all references
 	refs := p.resolver.ExtractReferences(yamlString)
-	
+
 	// Resolve references if any exist
 	var resolvedValues map[string]string
 	if len(refs) > 0 {
@@ -91,7 +91,7 @@ func mapToStruct(data map[string]interface{}, target interface{}, prefix string)
 		// Get yaml tag (prioritize yaml over cfg for backward compatibility)
 		yamlTag := fieldType.Tag.Get("yaml")
 		cfgTag := fieldType.Tag.Get("cfg")
-		
+
 		var tag string
 		if yamlTag != "" {
 			tag = yamlTag
@@ -101,7 +101,7 @@ func mapToStruct(data map[string]interface{}, target interface{}, prefix string)
 			// If no tag, use field name in lowercase
 			tag = strings.ToLower(fieldType.Name)
 		}
-		
+
 		// Apply prefix if needed
 		if prefix != "" && !strings.Contains(tag, ".") {
 			tag = prefix + "." + tag

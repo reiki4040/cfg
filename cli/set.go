@@ -117,6 +117,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to update JSON attribute: %w", err)
 		}
 
+		// Check if there are any changes
+		if existingValue == updatedValue {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
 		// Show diff
 		fmt.Printf("Parameter %s - JSONPath update: %s\n", resolvedPath, jsonPath)
 		if err := showJsonAttributeDiff(existingValue, updatedValue, jsonPath); err != nil {
@@ -243,6 +249,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	parameterExists := (err == nil)
 
 	if parameterExists {
+		// Check if there are any changes
+		if existingValue == value {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
 		fmt.Printf("Parameter %s already exists.\n", resolvedPath)
 
 		// Show diff (hide values for secrets)

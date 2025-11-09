@@ -217,13 +217,13 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 	// Create maps organized by normalized key (removing stage-specific parts)
 	params1 := make(map[string]aws.ParameterInfo)
 	params2 := make(map[string]aws.ParameterInfo)
-	
+
 	// Helper function to normalize parameter name for comparison
 	normalizeKey := func(paramName string, stageToRemove string) string {
 		// Remove stage-specific prefix to get comparable key
 		return strings.Replace(paramName, "/"+stageToRemove+"/", "/{stage}/", 1)
 	}
-	
+
 	for _, param := range paramInfos1 {
 		normalizedKey := normalizeKey(param.Name, stage1)
 		params1[normalizedKey] = param
@@ -244,7 +244,7 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 		allKeys[key] = true
 	}
 
-	var onlyIn1, onlyIn2, different []string
+	var onlyIn1, onlyIn2, different, maskedNoChange []string
 
 	for key := range allKeys {
 		param1, exists1 := params1[key]
@@ -254,8 +254,15 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 			onlyIn1 = append(onlyIn1, key)
 		} else if !exists1 && exists2 {
 			onlyIn2 = append(onlyIn2, key)
-		} else if exists1 && exists2 && param1.Value != param2.Value {
-			different = append(different, key)
+		} else if exists1 && exists2 {
+			// Mask状態のときは値を比較せず、show secretsの時だけ差分判定する
+			if (param1.Type == "SecureString" || param2.Type == "SecureString") && !showSecrets {
+				// SecureStringがmask状態の場合は、比較なしで「存在する」として扱う
+				// 色分けなしで出力するため maskedNoChange カテゴリに追加
+				maskedNoChange = append(maskedNoChange, key)
+			} else if param1.Value != param2.Value {
+				different = append(different, key)
+			}
 		}
 	}
 
@@ -263,8 +270,9 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 	sort.Strings(onlyIn1)
 	sort.Strings(onlyIn2)
 	sort.Strings(different)
+	sort.Strings(maskedNoChange)
 
-	hasChanges := len(onlyIn1) > 0 || len(onlyIn2) > 0 || len(different) > 0
+	hasChanges := len(onlyIn1) > 0 || len(onlyIn2) > 0 || len(different) > 0 || len(maskedNoChange) > 0
 
 	if !hasChanges {
 		fmt.Println("No differences found.")
@@ -357,6 +365,26 @@ func displayParameterStoreDiffWithTypes(stage1, stage2 string, paramInfos1, para
 					}
 					fmt.Println()
 				}
+			}
+		}
+	}
+
+	if len(maskedNoChange) > 0 {
+		for _, key := range maskedNoChange {
+			param1 := params1[key]
+			param2 := params2[key]
+			if keysOnly {
+				// Keys onlyモードではmask状態のパラメータも表示
+				fmt.Printf("%s\n", key)
+			} else {
+				// Mask状態のSecureString：色分けなしで表示
+				// 通常文字色で「存在する」ことを示す
+				param1Path := param1.Name
+				param2Path := param2.Name
+				fmt.Printf("--- %s (%s)\n", param1Path, stage1)
+				fmt.Printf("+++ %s (%s)\n", param2Path, stage2)
+				fmt.Printf("***masked secret***\n")
+				fmt.Println()
 			}
 		}
 	}
@@ -582,13 +610,9 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 					if prevParam, prevExists := paramsByStage[prevStage]; prevExists {
 						// 前のステージに存在する場合
 						if param.Type == "SecureString" && !showSecrets {
-							// SecureStringの場合はマスク値で比較
-							if "***masked secret***" != "***masked secret***" {
-								displayValue = "***masked secret***"
-								displayValue = colorizeTableValue(displayValue, "changed")
-							} else {
-								displayValue = "***masked secret***"
-							}
+							// SecureStringの場合、mask状態では差分なしとして扱う
+							// showSecretsの時だけ差分判定を行う
+							displayValue = "***masked secret***"
 						} else {
 							// 前のステージの値と比較
 							if param.Value != prevParam.Value {
@@ -604,9 +628,11 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 					} else {
 						// 前のステージに存在しない場合は緑色（追加）
 						if param.Type == "SecureString" && !showSecrets {
+							// Mask状態では色分けなしで表示
 							displayValue = "***masked secret***"
+						} else {
+							displayValue = colorizeTableValue(displayValue, "added")
 						}
-						displayValue = colorizeTableValue(displayValue, "added")
 					}
 				} else if shouldUseColor() && i == 0 && param.Type == "SecureString" && !showSecrets {
 					// 最初のステージでSecureStringの場合はマスク値を表示

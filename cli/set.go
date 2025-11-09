@@ -118,6 +118,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to show diff: %w", err)
 		}
 
+		// If dry-run mode, exit here without asking for confirmation or making actual changes
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
+		}
+
 		// Ask for confirmation unless --overwrite flag is used
 		if !setOverwrite {
 			confirmed, err := confirmOverwrite(resolvedPath)
@@ -128,12 +134,6 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 				fmt.Println("Operation cancelled.")
 				return nil
 			}
-		}
-
-		// If dry-run mode, exit here without making actual changes
-		if setDryRun {
-			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
-			return nil
 		}
 
 		// Determine KMS key and parameter type
@@ -269,6 +269,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 					fmt.Printf("New value: %s\n", value)
 				}
 			}
+		}
+
+		// If dry-run mode, exit here without asking for confirmation
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
 		}
 
 		// Ask for confirmation unless --overwrite flag is used

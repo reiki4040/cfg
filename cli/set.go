@@ -51,6 +51,7 @@ var (
 	setJsonValidate bool
 	setDryRun       bool
 	setColorFlag    string
+	setKeys         string
 )
 
 func init() {
@@ -67,6 +68,7 @@ func init() {
 	setCmd.Flags().BoolVar(&setJsonValidate, "json-validate", true, "Validate JSON format (default: true)")
 	setCmd.Flags().BoolVar(&setDryRun, "dry-run", false, "Preview changes without actually setting the parameter (show diff and exit)")
 	setCmd.Flags().StringVar(&setColorFlag, "color", "auto", "Color output mode: auto (default), always, never")
+	setCmd.Flags().StringVar(&setKeys, "keys", "", "Batch update multiple JSON attributes (e.g., 'key1=value1,key2=value2')")
 
 	// Mark flags as mutually exclusive
 	setCmd.MarkFlagsMutuallyExclusive("type", "string", "SS", "SL")
@@ -88,6 +90,91 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	// Create stage resolver for path resolution
 	stageResolver := createStageResolver()
 	resolvedPath := resolveParameterPath(resolvedParamPath, stageResolver)
+
+	// Handle batch update via --keys option
+	if setKeys != "" {
+		// Parse keys option
+		updates, err := parseKeysOption(setKeys)
+		if err != nil {
+			return fmt.Errorf("failed to parse --keys option: %w", err)
+		}
+
+		// Create AWS client
+		awsClient, err := createAWSClient()
+		if err != nil {
+			return fmt.Errorf("failed to create AWS client: %w", err)
+		}
+
+		ctx := context.Background()
+
+		// Retrieve existing parameter
+		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve parameter %s: %w", resolvedPath, err)
+		}
+
+		// Perform batch update
+		updatedValue, err := batchUpdateAttributes(existingValue, updates)
+		if err != nil {
+			return fmt.Errorf("failed to batch update JSON attributes: %w", err)
+		}
+
+		// Check if there are any changes
+		if existingValue == updatedValue {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
+		// Show diff
+		fmt.Printf("Parameter %s - Batch JSON attributes update\n", resolvedPath)
+		if err := showJsonAttributeDiff(existingValue, updatedValue, "multiple attributes"); err != nil {
+			return fmt.Errorf("failed to show diff: %w", err)
+		}
+
+		// If dry-run mode, exit here without asking for confirmation or making actual changes
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
+		}
+
+		// Ask for confirmation unless --overwrite flag is used
+		if !setOverwrite {
+			confirmed, err := confirmOverwrite(resolvedPath)
+			if err != nil {
+				return fmt.Errorf("failed to get confirmation: %w", err)
+			}
+			if !confirmed {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+		}
+
+		// Determine KMS key and parameter type
+		paramType := "String"
+		if setTypeSecure {
+			paramType = "SecureString"
+		} else if setTypeString {
+			paramType = "String"
+		}
+
+		kmsKey := setKMSKeyID
+		if kmsKey == "" && paramType == "SecureString" {
+			kmsKey = getKMSKeyForStageAndRegion(stageResolver.GetStage(), awsRegion)
+		}
+
+		// Update parameter
+		if kmsKey != "" && paramType == "SecureString" {
+			err = awsClient.PutParameterWithKey(ctx, resolvedPath, updatedValue, paramType, true, kmsKey)
+		} else {
+			err = awsClient.PutParameter(ctx, resolvedPath, updatedValue, paramType, true)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to update parameter %s: %w", resolvedPath, err)
+		}
+
+		fmt.Printf("Successfully updated JSON attributes in parameter: %s\n", resolvedPath)
+		return nil
+	}
 
 	// Handle JSONPath-based attribute update
 	if jsonPath != "" {
@@ -474,6 +561,67 @@ func parseJsonPath(input string) (paramPath string, jsonPath string, err error) 
 	jsonPath = input[colonIndex+1:]
 
 	return paramPath, jsonPath, nil
+}
+
+// parseKeysOption parses the --keys option value into a map of key-value pairs.
+// Format: "key1=value1,key2=value2,..."
+// Returns a map of key paths to values and an error if parsing fails.
+func parseKeysOption(keysStr string) (map[string]string, error) {
+	keyPairs := make(map[string]string)
+
+	if keysStr == "" {
+		return keyPairs, nil
+	}
+
+	// Split by comma to get individual key=value pairs
+	pairs := strings.Split(keysStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		// Split each pair by the first equals sign
+		eqIdx := strings.Index(pair, "=")
+		if eqIdx == -1 {
+			return nil, fmt.Errorf("invalid key=value pair format: '%s' (expected 'key=value')", pair)
+		}
+
+		keyPath := strings.TrimSpace(pair[:eqIdx])
+		value := strings.TrimSpace(pair[eqIdx+1:])
+
+		if keyPath == "" {
+			return nil, fmt.Errorf("empty key path in pair: '%s'", pair)
+		}
+
+		// Store the key-value pair (value can be empty)
+		keyPairs[keyPath] = value
+	}
+
+	if len(keyPairs) == 0 {
+		return nil, fmt.Errorf("no valid key=value pairs found in: '%s'", keysStr)
+	}
+
+	return keyPairs, nil
+}
+
+// batchUpdateAttributes updates multiple JSON attributes in a single JSON object.
+// It takes the original JSON string and applies updates for each key-value pair in the map.
+// If any update fails, the entire operation fails and returns an error.
+// Returns the updated JSON string and an error if any operation fails.
+func batchUpdateAttributes(originalJSON string, updates map[string]string) (string, error) {
+	currentJSON := originalJSON
+
+	// Apply each update sequentially
+	for keyPath, newValue := range updates {
+		updatedJSON, err := cfg.UpdateJsonAttribute(currentJSON, keyPath, newValue)
+		if err != nil {
+			return "", fmt.Errorf("failed to update attribute '%s': %w", keyPath, err)
+		}
+		currentJSON = updatedJSON
+	}
+
+	return currentJSON, nil
 }
 
 // showJsonAttributeDiff displays a formatted line-by-line diff of JSON attribute changes

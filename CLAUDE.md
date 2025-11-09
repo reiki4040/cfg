@@ -18,11 +18,17 @@ Kiro-style Spec Driven Development implementation using claude code slash comman
 - `paramstore-json-path` - Parameter Store の JSON 値への JSONPath ベースのアクセス機能（API 呼び出し最適化）
 - `secrets-manager-yaml-integration` - AWS Secrets Manager と YAML 設定ファイルのシームレスな統合（保留中）
 - `json-attribute-diff` - JSON の差分を属性単位で出力する機能
+- `cfgctl-diff-coloring` - cfgctl diffの差分に色をつけて人間が見やすくする機能
 - Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 
 ## Development Guidelines
-- Think in English, but generate responses in Japanese (思考は英語、回答の生成は日本語で行うように)
+
+### Language Policy
+**All explanations and user-facing output must be in Japanese.**
+- Think and plan in English internally
+- Generate all responses, documentation, and explanations in Japanese
+- See `@.kiro/steering/language-guidance.md` for detailed language guidelines
 
 ## Workflow
 
@@ -59,6 +65,7 @@ Managed by `/kiro:steering` command. Updates here reflect command changes.
 - `product.md`: Always included - Product context and business objectives
 - `tech.md`: Always included - Technology stack and architectural decisions
 - `structure.md`: Always included - File organization and code patterns
+- `language-guidance.md`: Always included - Language and communication guidelines (日本語での説明を要件)
 
 ### Custom Steering Files
 <!-- Added by /kiro:steering-custom command -->

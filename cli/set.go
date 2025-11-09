@@ -427,10 +427,14 @@ func formatJsonForDisplay(jsonStr string) (string, error) {
 	return string(formatted), nil
 }
 
-// parseJsonPath splits a parameter path into parameter path and JSONPath
+// parseJsonPath splits a parameter path into parameter path and JSONPath.
+// It separates the parameter path from the JSONPath by splitting on the first colon.
 // Format: "/parameter/path:json.path"
-// Example: "/config:database.host" → ("/config", "database.host")
-// If no colon is present, returns the full path and empty JSONPath
+// Example: "/config:database.host" returns ("/config", "database.host")
+// If no colon is present, returns the full path and empty JSONPath.
+//
+// This function enables JSONPath-based attribute updates while maintaining backward
+// compatibility with standard parameter paths that don't contain colons.
 func parseJsonPath(input string) (paramPath string, jsonPath string, err error) {
 	colonIndex := strings.Index(input, ":")
 	if colonIndex == -1 {
@@ -444,8 +448,19 @@ func parseJsonPath(input string) (paramPath string, jsonPath string, err error) 
 	return paramPath, jsonPath, nil
 }
 
-// showJsonAttributeDiff displays a diff of JSON attribute changes
-// when updating a specific JSON path within a parameter
+// showJsonAttributeDiff displays a formatted line-by-line diff of JSON attribute changes
+// when updating a specific JSON path within a parameter.
+// It formats both the old and new JSON with indentation and displays lines with markers:
+// - Lines starting with "-" indicate removed content from the old JSON
+// - Lines starting with "+" indicate added content in the new JSON
+// - Lines starting with spaces indicate unchanged content
+//
+// Parameters:
+//   - oldJSON: the original JSON string
+//   - newJSON: the modified JSON string
+//   - jsonPath: the JSONPath that was modified (displayed in the diff header)
+//
+// Returns an error if either JSON string cannot be parsed.
 func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
 	var oldObj, newObj interface{}
 
@@ -461,29 +476,40 @@ func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
 	fmt.Println("\n[JSON Attribute Diff]")
 	fmt.Printf("Path: %s\n", jsonPath)
 
+	// Format both JSON objects with consistent indentation for comparison
 	oldFormatted, _ := json.MarshalIndent(oldObj, "", "  ")
 	newFormatted, _ := json.MarshalIndent(newObj, "", "  ")
 
+	// Split formatted JSON into lines for line-by-line comparison
 	oldLines := strings.Split(string(oldFormatted), "\n")
 	newLines := strings.Split(string(newFormatted), "\n")
 
-	// Simple line-by-line diff display
+	// Perform simple line-by-line diff display
+	// This approach iterates through both line arrays simultaneously,
+	// comparing lines at the same index position
 	maxLines := len(oldLines)
 	if len(newLines) > maxLines {
 		maxLines = len(newLines)
 	}
 
+	// Iterate through all lines, padding with empty strings as needed
 	for i := 0; i < maxLines; i++ {
 		oldLine := ""
 		newLine := ""
 
+		// Get line from old JSON if available, otherwise use empty string
 		if i < len(oldLines) {
 			oldLine = oldLines[i]
 		}
+		// Get line from new JSON if available, otherwise use empty string
 		if i < len(newLines) {
 			newLine = newLines[i]
 		}
 
+		// Output diff markers based on line comparison:
+		// - "-" for lines only in old JSON
+		// - "+" for lines only in new JSON
+		// - " " (space) for unchanged lines
 		if oldLine != newLine {
 			if oldLine != "" {
 				fmt.Printf("- %s\n", oldLine)
@@ -492,6 +518,7 @@ func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
 				fmt.Printf("+ %s\n", newLine)
 			}
 		} else if oldLine != "" {
+			// Print unchanged lines with space prefix for clarity
 			fmt.Printf("  %s\n", oldLine)
 		}
 	}

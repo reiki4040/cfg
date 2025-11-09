@@ -435,13 +435,13 @@ func TestParseJsonPath(t *testing.T) {
 // TestJsonPathAttributeUpdate tests updating JSON attributes via JSONPath in set command
 func TestJsonPathAttributeUpdate(t *testing.T) {
 	testCases := []struct {
-		name              string
-		paramPath         string
-		jsonPath          string
-		newValue          string
-		existingJson      string
-		expectedContains  string
-		wantErr           bool
+		name             string
+		paramPath        string
+		jsonPath         string
+		newValue         string
+		existingJson     string
+		expectedContains string
+		wantErr          bool
 	}{
 		{
 			name:             "update_simple_attribute",
@@ -503,7 +503,7 @@ func TestJsonAttributeDiffDisplay(t *testing.T) {
 		newJson        string
 		jsonPath       string
 		shouldContain  []string // Expected strings in output
-		shouldNotMatch bool      // Whether lines should NOT match
+		shouldNotMatch bool     // Whether lines should NOT match
 	}{
 		{
 			name:     "simple_attribute_update",

@@ -15,13 +15,13 @@ import (
 // - Backward compatibility (non-JSONPath paths)
 func TestJsonPathAttributeUpdateFlow(t *testing.T) {
 	testCases := []struct {
-		name             string
-		paramPath        string
-		jsonPath         string
-		newValue         string
-		existingJson     string
+		name               string
+		paramPath          string
+		jsonPath           string
+		newValue           string
+		existingJson       string
 		shouldHaveJsonPath bool
-		description      string
+		description        string
 	}{
 		{
 			name:               "new_param_json_attribute_update",
@@ -223,10 +223,10 @@ func TestSecureStringParameterHandling(t *testing.T) {
 // TestErrorScenarioHandling tests error handling in various failure scenarios
 func TestErrorScenarioHandling(t *testing.T) {
 	testCases := []struct {
-		name         string
-		errorType    string
-		description  string
-		shouldError  bool
+		name        string
+		errorType   string
+		description string
+		shouldError bool
 	}{
 		{
 			name:        "invalid_jsonpath_format",
@@ -287,33 +287,33 @@ func TestJsonPathIntegrationScenarios(t *testing.T) {
 		description string
 	}{
 		{
-			name:     "scenario_1_basic_attribute_update",
-			scenario: "Simple JSONPath attribute update with confirmation",
+			name:        "scenario_1_basic_attribute_update",
+			scenario:    "Simple JSONPath attribute update with confirmation",
 			description: "基本的な JSON 属性更新（確認プロンプト付き）",
 		},
 		{
-			name:     "scenario_2_nested_creation",
-			scenario: "Create nested JSON structure with intermediate paths",
+			name:        "scenario_2_nested_creation",
+			scenario:    "Create nested JSON structure with intermediate paths",
 			description: "ネストされた属性の作成（途中のキーも自動作成）",
 		},
 		{
-			name:     "scenario_3_dry_run_preview",
-			scenario: "Preview changes with --dry-run before applying",
+			name:        "scenario_3_dry_run_preview",
+			scenario:    "Preview changes with --dry-run before applying",
 			description: "--dry-run での差分プレビュー確認",
 		},
 		{
-			name:     "scenario_4_securestring_update",
-			scenario: "Update SecureString parameter with encryption",
+			name:        "scenario_4_securestring_update",
+			scenario:    "Update SecureString parameter with encryption",
 			description: "SecureString パラメータの暗号化更新",
 		},
 		{
-			name:     "scenario_5_error_recovery",
-			scenario: "Recover gracefully from invalid JSON path",
+			name:        "scenario_5_error_recovery",
+			scenario:    "Recover gracefully from invalid JSON path",
 			description: "不正なパスからの正常な復旧",
 		},
 		{
-			name:     "scenario_6_backward_compat",
-			scenario: "Traditional parameter update without JSONPath",
+			name:        "scenario_6_backward_compat",
+			scenario:    "Traditional parameter update without JSONPath",
 			description: "従来の単純値更新（互換性確認）",
 		},
 	}

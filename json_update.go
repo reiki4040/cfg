@@ -151,30 +151,44 @@ func UpdateJsonAttribute(jsonStr, keyPath, newValue string) (string, error) {
 
 // updateObjectWithKeys recursively updates an object following the key path.
 // It creates intermediate objects as needed and validates that non-leaf keys point to objects.
+//
+// Algorithm:
+// 1. Extract the first key from the path
+// 2. If it's the final key, set its value directly
+// 3. If more keys remain, traverse deeper:
+//   - Create intermediate object if key doesn't exist
+//   - Validate that the value at this key is an object (map)
+//   - Recursively call with remaining keys
+//
+// Error cases:
+// - Type mismatch: attempting to traverse through non-object values (strings, numbers, etc.)
 func updateObjectWithKeys(obj map[string]interface{}, keys []string, newValue string) error {
 	if len(keys) == 0 {
 		return nil
 	}
 
+	// Separate the first key from remaining keys
 	currentKey := keys[0]
 	remainingKeys := keys[1:]
 
+	// Base case: this is the final key - set the value directly
 	if len(remainingKeys) == 0 {
-		// This is the final key - set the value
 		obj[currentKey] = newValue
 		return nil
 	}
 
-	// Need to traverse deeper - check if key exists and is an object
+	// Recursive case: need to traverse deeper
+	// Check if key exists and get its value
 	nestedValue, exists := obj[currentKey]
 
+	// If key doesn't exist, create an empty nested object
 	if !exists {
-		// Key doesn't exist - create nested structure
 		obj[currentKey] = make(map[string]interface{})
 		nestedValue = obj[currentKey]
 	}
 
-	// Ensure it's a map (object)
+	// Type assertion: ensure the value is a map (JSON object)
+	// This prevents attempting to traverse through primitive values (strings, numbers, etc.)
 	nestedObj, ok := nestedValue.(map[string]interface{})
 	if !ok {
 		// The key exists but is not an object - cannot traverse
@@ -185,7 +199,7 @@ func updateObjectWithKeys(obj map[string]interface{}, keys []string, newValue st
 		}
 	}
 
-	// Recursively update the nested object
+	// Recursively update the nested object with remaining path
 	return updateObjectWithKeys(nestedObj, remainingKeys, newValue)
 }
 

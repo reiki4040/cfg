@@ -54,7 +54,6 @@ func TestFullFeatureIntegration(t *testing.T) {
 	}
 }
 
-
 // TestBackwardCompatibilityWithoutJsonPath tests that traditional parameter operations
 // work without any JSONPath features and maintain full backward compatibility
 func TestBackwardCompatibilityWithoutJsonPath(t *testing.T) {

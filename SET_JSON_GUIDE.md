@@ -28,6 +28,59 @@ cfgctl set /app/{stage}/config --json-file=config.json --stage=prod
 
 ## Features
 
+### Batch Update Multiple JSON Attributes with --keys
+
+Update multiple JSON attributes in a single operation using the `--keys` flag:
+
+```bash
+# Update multiple attributes at once
+cfgctl set /app/config --keys 'database.host=newhost,database.port=3306'
+
+# Preview changes before applying (--dry-run)
+cfgctl set /app/config --keys 'host=localhost,port=5432,timeout=30' --dry-run
+
+# With stage placeholder
+cfgctl set /app/{stage}/config --keys 'db.host=prodhost,db.port=3306' --stage=prod
+
+# Store as SecureString
+cfgctl set /app/secrets --keys 'api_key=newkey,db_password=newpass' --SS
+```
+
+**Format**: `key1=value1,key2=value2,key3=value3,...`
+
+**Features**:
+- Multiple attributes updated in one API call
+- Nested JSON paths supported (e.g., `database.connection.host=value`)
+- Partial failure handling (stops on first error with descriptive message)
+- Diff preview before confirmation
+- `--dry-run` support for testing changes
+- `--overwrite` flag to skip confirmation
+- SecureString (--SS) and regular String storage options
+- Compatible with `--stage` placeholder
+
+**Example - Database Configuration Update**:
+
+```bash
+# Update multiple database connection parameters
+cfgctl set /app/prod/db-config \
+  --keys 'primary.host=new-primary.db.com,primary.port=5432,replica.host=new-replica.db.com' \
+  --dry-run
+
+# Output shows attribute-level diff:
+# Parameter /app/prod/db-config - Batch JSON attributes update
+#
+# [JSON Attribute Diff]
+# Path: multiple attributes
+# - "primary": {
+# -   "host": "old-primary.db.com",
+# + "primary": {
+# +   "host": "new-primary.db.com",
+#     "port": 5432
+# + },
+# + "replica": {
+# +   "host": "new-replica.db.com"
+```
+
 ### Automatic JSON Validation
 
 By default, JSON is automatically validated before being sent to Parameter Store:
@@ -76,6 +129,35 @@ cfgctl set /app/config --json-file=new-config.json
 ```
 
 ## Examples
+
+### Batch Update Multiple JSON Attributes
+
+Update multiple related configuration values in one command:
+
+```bash
+# Update API server configuration at once
+cfgctl set /app/prod/api-config --keys 'server.host=api.example.com,server.port=8080,server.timeout=30' --overwrite
+
+# Update database connection pool settings
+cfgctl set /app/prod/db-config --keys 'pool.min_size=10,pool.max_size=50,pool.timeout=60' --dry-run
+
+# Update multiple stage-specific settings
+cfgctl set /app/{stage}/config --keys 'log_level=info,cache_ttl=3600,enable_metrics=true' --stage=prod --overwrite
+```
+
+**Verification with JSONPath**:
+
+```bash
+# After batch update, extract individual values
+cfgctl get /app/prod/api-config --jsonpath=server.host
+# Output: api.example.com
+
+cfgctl get /app/prod/api-config --jsonpath=server.port
+# Output: 8080
+
+cfgctl get /app/prod/db-config --jsonpath=pool.max_size
+# Output: 50
+```
 
 ### Database Configuration
 
@@ -195,18 +277,33 @@ cfgctl set /app/{stage}/config --json-file=config.json --SS --stage=prod
 
 ## Best Practices
 
-1. **Validate JSON locally first**
+1. **Batch updates for related attributes**
+   - Use `--keys` for updating multiple related configuration values
+   - Reduces confirmation prompts in automation
+   - Single API call reduces latency
+   - Example: `--keys 'db.host=new,db.port=5432,db.pool.size=20'`
+
+2. **Preview before applying**
+   ```bash
+   # Always use --dry-run first to see changes
+   cfgctl set /app/config --keys 'host=new,port=8080' --dry-run
+
+   # If preview looks good, apply with --overwrite
+   cfgctl set /app/config --keys 'host=new,port=8080' --overwrite
+   ```
+
+3. **Validate JSON locally first**
    ```bash
    # Use jq to validate JSON before uploading
    jq . config.json > /dev/null && cfgctl set /app/config --json-file=config.json
    ```
 
-2. **Use files for complex structures**
+4. **Use files for complex structures**
    - Files are better for large or complex JSON
    - Easier to version control
    - Simpler to manage indentation
 
-3. **Keep JSON organized**
+5. **Keep JSON organized**
    ```json
    {
      "database": {
@@ -218,18 +315,48 @@ cfgctl set /app/{stage}/config --json-file=config.json --SS --stage=prod
    }
    ```
 
-4. **Use JSONPath for multiple values**
+6. **Use JSONPath for multiple values**
    - Store related values in one parameter
    - Reference with JSONPath to reduce API calls
    - Automatic deduplication of multiple references
 
-5. **Leverage overwrite flag**
+7. **Leverage overwrite flag**
    ```bash
    # Auto-confirm overwrite in scripts
    cfgctl set /app/config --json-file=config.json --overwrite --no-interactive
+
+   # Also works with --keys
+   cfgctl set /app/config --keys 'a=1,b=2' --overwrite --no-interactive
+   ```
+
+8. **Combine --keys with stage placeholders**
+   ```bash
+   # Update stage-specific settings atomically
+   cfgctl set /app/{stage}/config --keys 'log_level=debug,cache_ttl=600' --stage=dev --overwrite
+   cfgctl set /app/{stage}/config --keys 'log_level=info,cache_ttl=3600' --stage=prod --overwrite
    ```
 
 ## Error Handling
+
+### Batch Update Errors (--keys)
+
+```bash
+# Invalid key=value format (missing equals sign)
+cfgctl set /app/config --keys 'key1:value1,key2=value2'
+# Error: failed to parse --keys option: invalid key=value pair format: 'key1:value1' (expected 'key=value')
+
+# Empty key path
+cfgctl set /app/config --keys '=value'
+# Error: failed to parse --keys option: empty key path in pair: '=value'
+
+# Invalid key path in JSON (path traversal)
+cfgctl set /app/config --keys '..invalid=value'
+# Error: failed to batch update JSON attributes: failed to update attribute '..invalid': ...
+
+# Partial failure (stops on first error, earlier updates not applied)
+cfgctl set /app/config --keys 'valid.key=value,invalid..path=value'
+# Error: failed to batch update JSON attributes: failed to update attribute 'invalid..path': ...
+```
 
 ### Invalid JSON Format
 
@@ -343,18 +470,22 @@ FLAGS:
   --json string              Set value as JSON string (inline JSON)
   --json-file string         Set value as JSON from file
   --json-validate            Validate JSON format (default: true)
+  --keys string              Batch update multiple JSON attributes (e.g., 'key1=value1,key2=value2')
   --type string              Parameter type (String, SecureString, StringList)
   -S, --string              Set parameter type to String
   --SS                      Set parameter type to SecureString
   --SL                      Set parameter type to StringList
   --overwrite               Overwrite existing parameter without confirmation
   --no-interactive          Disable interactive mode
+  --dry-run                 Preview changes without actually setting the parameter
   --kms-key string          KMS key ID for SecureString parameters
   --stage string            Stage placeholder value
+  --color string            Color output mode (auto, always, never)
 ```
 
 ## Limitations and Notes
 
+### General Limitations
 - **4KB limit**: Parameter Store String/SecureString types have 4KB size limit
 - **Type selection**: JSON values can be stored as String (default) or SecureString (--SS)
 - **StringList not supported**: JSON values cannot be stored as StringList type
@@ -362,6 +493,20 @@ FLAGS:
 - **Validation is optional**: Can be disabled with `--json-validate=false`
 - **File encoding**: JSON files must be UTF-8 encoded
 - **KMS permissions**: SecureString storage requires appropriate IAM permissions for KMS key
+
+### Batch Update (--keys) Limitations
+- **Single parameter only**: `--keys` updates only one parameter (cannot span multiple parameters)
+- **Atomic at parameter level**: All attributes updated together or none (no partial applies)
+- **No ordering guarantee**: Key-value pairs processed in map iteration order (use one key per critical update if order matters)
+- **Key path format**: Must be valid JSONPath format with dot notation (e.g., `a.b.c`, not `a[0].b`)
+- **Failure handling**: If any key update fails, entire operation fails with no changes applied
+- **No array indexing**: Array element updates not supported (e.g., `items[0].name` is not supported)
+
+### Error Recovery
+- If `--keys` update fails, no changes are applied (atomic failure)
+- Use `--dry-run` to preview all changes before applying
+- Review error message to identify which key caused the failure
+- Fix the key path format and retry
 
 ## See Also
 

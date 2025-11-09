@@ -107,10 +107,14 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 
 		ctx := context.Background()
 
-		// Retrieve existing parameter
-		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
+		// Retrieve existing parameter or initialize with empty JSON
+		var existingValue string
+		isNewParameter := false
+		existingValue, err = awsClient.GetParameter(ctx, resolvedPath, true)
 		if err != nil {
-			return fmt.Errorf("parameter not found: %s (cannot update JSON attributes - parameter must exist)", resolvedPath)
+			// Parameter doesn't exist - initialize with empty JSON object
+			existingValue = "{}"
+			isNewParameter = true
 		}
 
 		// Perform batch update
@@ -119,14 +123,18 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to batch update JSON attributes: %w", err)
 		}
 
-		// Check if there are any changes
-		if existingValue == updatedValue {
+		// Check if there are any changes (only for existing parameters)
+		if !isNewParameter && existingValue == updatedValue {
 			fmt.Println("No change detected.")
 			return nil
 		}
 
-		// Show diff
-		fmt.Printf("Parameter %s - Batch JSON attributes update\n", resolvedPath)
+		// Show message and diff
+		if isNewParameter {
+			fmt.Printf("Creating new parameter %s with JSON attributes\n", resolvedPath)
+		} else {
+			fmt.Printf("Parameter %s - Batch JSON attributes update\n", resolvedPath)
+		}
 		if err := showJsonAttributeDiff(existingValue, updatedValue, "multiple attributes"); err != nil {
 			return fmt.Errorf("failed to show diff: %w", err)
 		}
@@ -192,10 +200,14 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 
 		ctx := context.Background()
 
-		// Retrieve existing parameter
-		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
+		// Retrieve existing parameter or initialize with empty JSON
+		var existingValue string
+		isNewParameter := false
+		existingValue, err = awsClient.GetParameter(ctx, resolvedPath, true)
 		if err != nil {
-			return fmt.Errorf("parameter not found: %s (cannot update JSON attribute - parameter must exist)", resolvedPath)
+			// Parameter doesn't exist - initialize with empty JSON object
+			existingValue = "{}"
+			isNewParameter = true
 		}
 
 		// Update JSON attribute
@@ -204,14 +216,18 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to update JSON attribute: %w", err)
 		}
 
-		// Check if there are any changes
-		if existingValue == updatedValue {
+		// Check if there are any changes (only for existing parameters)
+		if !isNewParameter && existingValue == updatedValue {
 			fmt.Println("No change detected.")
 			return nil
 		}
 
-		// Show diff
-		fmt.Printf("Parameter %s - JSONPath update: %s\n", resolvedPath, jsonPath)
+		// Show message and diff
+		if isNewParameter {
+			fmt.Printf("Creating new parameter %s with JSON attribute\n", resolvedPath)
+		} else {
+			fmt.Printf("Parameter %s - JSONPath update: %s\n", resolvedPath, jsonPath)
+		}
 		if err := showJsonAttributeDiff(existingValue, updatedValue, jsonPath); err != nil {
 			return fmt.Errorf("failed to show diff: %w", err)
 		}

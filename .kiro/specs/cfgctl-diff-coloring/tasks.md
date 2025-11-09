@@ -157,7 +157,8 @@
   - 2ステージ diff（--compare-stage）での色出力確認
   - マルチステージ diff（--stages）での色出力確認
   - JSON diff（属性レベル）での色出力確認
-  - 各フラグ（--keys-only、--show-secrets、--no-json-diff、--json-expand）との組み合わせテスト
+  - マルチステージ比較での JSON値の自動展開表示確認
+  - 各フラグ（--keys-only、--show-secrets、--no-json-diff、--color）との組み合わせテスト
   - _Requirements: 1.1, 2.1, 3.1, 4.1, 4.2, 4.3, 4.4_
 
 - [x] 8.2 後方互換性の確認

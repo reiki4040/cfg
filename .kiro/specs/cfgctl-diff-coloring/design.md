@@ -40,8 +40,9 @@
 - テーブル行: `fmt.Printf(" %-32s", value)` （マルチステージ比較の値セル）
 
 **フラグ構造**:
-- 既存フラグ: `--stage`, `--compare-stage`, `--stages`, `--path`, `--keys-only`, `--show-secrets`, `--no-json-diff`, `--json-expand`
+- 既存フラグ: `--stage`, `--compare-stage`, `--stages`, `--path`, `--keys-only`, `--show-secrets`, `--no-json-diff`
 - 新規フラグ: `--color` （auto/always/never）
+- **マルチステージ比較での JSON値展開は自動化**: `--stages` 使用時は常にJSON値をJSONPath形式で展開表示
 
 ### High-Level Architecture
 

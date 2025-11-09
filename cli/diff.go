@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -49,7 +50,6 @@ var (
 	diffShowSecrets    bool
 	diffCompareProfile string
 	diffNoJSONDiff     bool
-	diffJSONExpand     bool
 	diffColorMode      string
 )
 
@@ -63,7 +63,6 @@ func init() {
 	diffCmd.Flags().BoolVar(&diffShowSecrets, "show-secrets", false, "Show SecureString parameter values (DANGEROUS)")
 	diffCmd.Flags().StringVar(&diffCompareProfile, "compare-profile", "", "AWS profile for comparison target")
 	diffCmd.Flags().BoolVar(&diffNoJSONDiff, "no-json-diff", false, "Disable JSON attribute-level diff (use string comparison)")
-	diffCmd.Flags().BoolVar(&diffJSONExpand, "json-expand", false, "Expand JSON attributes in multi-stage diff table")
 	diffCmd.Flags().StringVar(&diffColorMode, "color", "auto", "Color output mode: auto (default), always, never")
 }
 
@@ -173,24 +172,42 @@ func runMultiStageDiff() error {
 	}
 
 	ctx := context.Background()
-	stageParamInfos := make(map[string][]aws.ParameterInfo)
+
+	// stageParamInfosMapは、正規化されたキー -> stage -> ParameterInfo のマップ
+	stageParamInfosMap := make(map[string]map[string]aws.ParameterInfo)
+
+	// normalizationMap: 各stageでの正規化方法を保持
+	normalizeKey := func(paramName string, stageToNormalize string) string {
+		// Remove stage-specific prefix to get comparable key
+		return strings.Replace(paramName, "/"+stageToNormalize+"/", "/{stage}/", 1)
+	}
 
 	// Get parameters for each stage
 	for _, s := range stages {
 		stageResolver := cfg.NewStageResolver(strings.TrimSpace(s))
 		resolvedPath := stageResolver.ResolvePath(pathForDiff)
-		
+		stageName := stageResolver.GetStage()
+
 		// Decrypt parameters if we want to show secrets
 		shouldDecrypt := diffShowSecrets
 		paramInfos, err := awsClient.GetParameterInfosByPath(ctx, resolvedPath, true, shouldDecrypt)
 		if err != nil {
 			paramInfos = []aws.ParameterInfo{}
 		}
-		stageParamInfos[stageResolver.GetStage()] = paramInfos
+
+		// Normalize parameter names and build the map
+		for _, param := range paramInfos {
+			normalizedKey := normalizeKey(param.Name, stageName)
+
+			if stageParamInfosMap[normalizedKey] == nil {
+				stageParamInfosMap[normalizedKey] = make(map[string]aws.ParameterInfo)
+			}
+			stageParamInfosMap[normalizedKey][stageName] = param
+		}
 	}
 
 	// Display multi-stage comparison
-	displayMultiStageDiffWithTypes(stages, stageParamInfos, comparePath, diffKeysOnly, diffShowSecrets)
+	displayMultiStageDiffWithTypes(stages, stageParamInfosMap, comparePath, diffKeysOnly, diffShowSecrets)
 
 	return nil
 }
@@ -463,26 +480,14 @@ func displayParameterStoreDiff(stage1, stage2 string, params1, params2 map[strin
 	}
 }
 
-func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string][]aws.ParameterInfo, path string, keysOnly bool, showSecrets bool) {
-	// Convert to map format for easier lookup
-	stageParams := make(map[string]map[string]aws.ParameterInfo)
-	for stage, paramInfos := range stageParamInfos {
-		params := make(map[string]aws.ParameterInfo)
-		for _, param := range paramInfos {
-			params[param.Name] = param
-		}
-		stageParams[stage] = params
-	}
-
+func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]map[string]aws.ParameterInfo, path string, keysOnly bool, showSecrets bool) {
 	fmt.Printf("Multi-stage Parameter Store Comparison (path: %s)\n", path)
 	fmt.Printf("Stages: %s\n\n", strings.Join(stages, ", "))
 
-	// Collect all unique parameter keys
+	// Collect all unique parameter keys (正規化されたキー)
 	allKeys := make(map[string]bool)
-	for _, params := range stageParams {
-		for key := range params {
-			allKeys[key] = true
-		}
+	for key := range stageParamInfos {
+		allKeys[key] = true
 	}
 
 	if len(allKeys) == 0 {
@@ -515,18 +520,13 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 		fmt.Println(strings.Repeat("-", 50+len(stages)*33))
 
 		for _, key := range sortedKeys {
-			fmt.Printf("%-50s", key)
+			// 各ステージのパラメータを取得（正規化されたキーから）
+			paramsByStage := stageParamInfos[key]
 
-			// 各ステージのパラメータを取得
-			paramsByStage := make(map[string]aws.ParameterInfo)
-			for _, stage := range stages {
-				params := stageParams[stage]
-				if param, exists := params[key]; exists {
-					paramsByStage[stage] = param
-				}
-			}
+			// 各ステージの表示値を取得
+			displayValues := make([]string, len(stages))
+			maxLines := 1 // 表示行数
 
-			// 隣り合うステージペアで比較（ベースステージとの差分をチェック）
 			for i, stage := range stages {
 				param, exists := paramsByStage[stage]
 
@@ -542,28 +542,38 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 							}
 						}
 					}
-					fmt.Printf(" %-32s", missingValue)
+					displayValues[i] = missingValue
 					continue
 				}
 
 				displayValue := param.Value
 
-				// JSON の場合、長い値はサマリー表示
-				if len(param.Value) > 1000 {
+				// JSON の場合の処理
+				isJSON := isJSONValue(param.Value)
+				if isJSON {
+					// JSON値は常にJSONPath形式で展開表示
+					displayValue = flattenJSONForDisplay(param.Value)
+				} else if len(param.Value) > 1000 {
+					// JSON でない場合はサマリー表示
 					summary := FormatJSONSummary(param.Value)
 					if len(summary) < len(param.Value) {
 						displayValue = summary
 					}
-				}
 
-				// 改行文字をスペースに置換してテーブルの崩れを防止
-				displayValue = strings.ReplaceAll(displayValue, "\n", " ")
-				displayValue = strings.ReplaceAll(displayValue, "\r", "")
-				displayValue = strings.ReplaceAll(displayValue, "\t", " ")
+					// 改行文字をスペースに置換してテーブルの崩れ防止
+					displayValue = strings.ReplaceAll(displayValue, "\n", " ")
+					displayValue = strings.ReplaceAll(displayValue, "\r", "")
+					displayValue = strings.ReplaceAll(displayValue, "\t", " ")
 
-				// それでも長い場合は truncate
-				if len(displayValue) > 29 {
-					displayValue = displayValue[:29] + "..."
+					// それでも長い場合は truncate
+					if len(displayValue) > 29 {
+						displayValue = displayValue[:29] + "..."
+					}
+				} else {
+					// 短い値の場合は改行文字をスペースに置換
+					displayValue = strings.ReplaceAll(displayValue, "\n", " ")
+					displayValue = strings.ReplaceAll(displayValue, "\r", "")
+					displayValue = strings.ReplaceAll(displayValue, "\t", " ")
 				}
 
 				// 前のステージとの比較で色分けを判定
@@ -582,8 +592,13 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 						} else {
 							// 前のステージの値と比較
 							if param.Value != prevParam.Value {
-								// 値が異なる場合は黄色（変更）
-								displayValue = colorizeTableValue(displayValue, "changed")
+								// JSON値の場合は属性ごとに色分け、それ以外は全体を色分け
+								if isJSON {
+									displayValue = colorizeJSONAttributeDiff(param.Value, prevParam.Value, displayValue)
+								} else {
+									// 値が異なる場合は黄色（変更）
+									displayValue = colorizeTableValue(displayValue, "changed")
+								}
 							}
 						}
 					} else {
@@ -598,9 +613,52 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 					displayValue = "***masked secret***"
 				}
 
-				fmt.Printf(" %-32s", displayValue)
+				displayValues[i] = displayValue
+
+				// JSON値は常に複数行表示の準備
+				if isJSON {
+					lines := strings.Split(displayValue, " | ")
+					if len(lines) > maxLines {
+						maxLines = len(lines)
+					}
+				}
 			}
-			fmt.Println()
+
+			// 複数行表示の場合
+			if maxLines > 1 {
+				// 最初の行：正規化キー（{stage}プレースホルダー） + 各ステージの最初の行
+				fmt.Printf("%-50s", key)
+				for _, displayValue := range displayValues {
+					parts := strings.Split(displayValue, " | ")
+					if len(parts) > 0 {
+						fmt.Printf(" %-32s", truncateValue(parts[0], 32))
+					} else {
+						fmt.Printf(" %-32s", truncateValue(displayValue, 32))
+					}
+				}
+				fmt.Println()
+
+				// 2行目以降：パディング + 各ステージの残りの行
+				for lineIdx := 1; lineIdx < maxLines; lineIdx++ {
+					fmt.Printf("%-50s", "") // パラメータ名の部分は空欄
+					for _, displayValue := range displayValues {
+						parts := strings.Split(displayValue, " | ")
+						if lineIdx < len(parts) {
+							fmt.Printf(" %-32s", truncateValue(parts[lineIdx], 32))
+						} else {
+							fmt.Printf(" %-32s", "")
+						}
+					}
+					fmt.Println()
+				}
+			} else {
+				// 通常の1行表示
+				fmt.Printf("%-50s", key)
+				for _, displayValue := range displayValues {
+					fmt.Printf(" %-32s", truncateValue(displayValue, 32))
+				}
+				fmt.Println()
+			}
 		}
 	}
 }
@@ -658,4 +716,254 @@ func displayMultiStageDiff(stages []string, stageParams map[string]map[string]st
 		}
 		fmt.Println()
 	}
+}
+
+// truncateValue: 文字列を指定の長さで truncate
+func truncateValue(value string, maxLen int) string {
+	if len(value) > maxLen {
+		return value[:maxLen-3] + "..."
+	}
+	return value
+}
+
+// isJSONValue: 文字列がJSON形式かどうかを判定
+func isJSONValue(value string) bool {
+	if len(value) == 0 {
+		return false
+	}
+
+	value = strings.TrimSpace(value)
+	// JSONは {} または [] で始まる必要がある
+	if !((strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}")) ||
+		(strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"))) {
+		return false
+	}
+
+	// JSONのパース試行
+	var obj interface{}
+	err := json.Unmarshal([]byte(value), &obj)
+	return err == nil
+}
+
+// flattenJSONForDisplay: JSON値をJSONPath形式でフラット化して表示用文字列に変換
+// 例: {"key1":{"sub1":"value1"},"key2":"value2"}
+//  -> "key1.sub1: value1 | key2: value2"
+func flattenJSONForDisplay(jsonValue string) string {
+	var obj interface{}
+	err := json.Unmarshal([]byte(jsonValue), &obj)
+	if err != nil {
+		// JSONパースエラーの場合は元の値を返す（改行削除）
+		cleaned := strings.ReplaceAll(jsonValue, "\n", " ")
+		cleaned = strings.ReplaceAll(cleaned, "\r", "")
+		cleaned = strings.ReplaceAll(cleaned, "\t", " ")
+		return cleaned
+	}
+
+	flatMap := make(map[string]interface{})
+
+	// オブジェクト型の場合
+	if objMap, ok := obj.(map[string]interface{}); ok {
+		flatMap = flattenJSONObject(objMap, "")
+	} else if objArray, ok := obj.([]interface{}); ok {
+		// 配列型の場合
+		flatMap = flattenJSONArray(objArray, "")
+	}
+
+	// フラット化されたマップを文字列に変換
+	return formatFlattenedJSON(flatMap)
+}
+
+// flattenJSONObject: JSONオブジェクトをフラット化
+func flattenJSONObject(obj map[string]interface{}, prefix string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	if obj == nil {
+		return result
+	}
+
+	for key, value := range obj {
+		var fullPath string
+		if prefix == "" {
+			fullPath = key
+		} else {
+			fullPath = prefix + "." + key
+		}
+
+		switch v := value.(type) {
+		case map[string]interface{}:
+			// ネストされたオブジェクト
+			nested := flattenJSONObject(v, fullPath)
+			for k, val := range nested {
+				result[k] = val
+			}
+		case []interface{}:
+			// 配列
+			nested := flattenJSONArray(v, fullPath)
+			for k, val := range nested {
+				result[k] = val
+			}
+		default:
+			// スカラー値
+			result[fullPath] = value
+		}
+	}
+
+	return result
+}
+
+// flattenJSONArray: JSON配列をフラット化
+func flattenJSONArray(arr []interface{}, prefix string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	for i, value := range arr {
+		fullPath := fmt.Sprintf("%s[%d]", prefix, i)
+
+		switch v := value.(type) {
+		case map[string]interface{}:
+			// 配列内のオブジェクト
+			nested := flattenJSONObject(v, fullPath)
+			for k, val := range nested {
+				result[k] = val
+			}
+		case []interface{}:
+			// 配列内の配列
+			nested := flattenJSONArray(v, fullPath)
+			for k, val := range nested {
+				result[k] = val
+			}
+		default:
+			// スカラー値
+			result[fullPath] = value
+		}
+	}
+
+	return result
+}
+
+// formatFlattenedJSON: フラット化されたマップを表示用文字列に変換
+func formatFlattenedJSON(flatMap map[string]interface{}) string {
+	if len(flatMap) == 0 {
+		return ""
+	}
+
+	// キーをソート
+	var keys []string
+	for k := range flatMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// 各キーを "key: value" 形式で出力
+	var parts []string
+	for _, key := range keys {
+		value := flatMap[key]
+		valueStr := fmt.Sprintf("%v", value)
+
+		// 値の型に応じた整形
+		switch v := value.(type) {
+		case string:
+			valueStr = v
+		case float64:
+			// 整数の場合は小数点なしで表示
+			if v == float64(int64(v)) {
+				valueStr = fmt.Sprintf("%.0f", v)
+			} else {
+				valueStr = fmt.Sprintf("%g", v)
+			}
+		case bool:
+			valueStr = fmt.Sprintf("%v", v)
+		case nil:
+			valueStr = "null"
+		}
+
+		// 値が長い場合は truncate
+		if len(valueStr) > 20 {
+			valueStr = valueStr[:20] + "..."
+		}
+
+		parts = append(parts, fmt.Sprintf("%s:%s", key, valueStr))
+	}
+
+	// "key1:value1 | key2:value2" の形式で結合
+	result := strings.Join(parts, " | ")
+
+	// 改行を削除してテーブル崩れを防止
+	result = strings.ReplaceAll(result, "\n", " ")
+	result = strings.ReplaceAll(result, "\r", "")
+	result = strings.ReplaceAll(result, "\t", " ")
+
+	return result
+}
+
+// colorizeJSONAttributeDiff: JSON値の属性ごとに差分判定して色分け
+// 異なる属性だけ黄色で表示
+func colorizeJSONAttributeDiff(currentValue, prevValue, flattenedDisplay string) string {
+	if !shouldUseColor() {
+		return flattenedDisplay
+	}
+
+	// 両方のJSON値をパースしてフラット化
+	var currObj, prevObj interface{}
+	err1 := json.Unmarshal([]byte(currentValue), &currObj)
+	err2 := json.Unmarshal([]byte(prevValue), &prevObj)
+
+	if err1 != nil || err2 != nil {
+		// パースエラーの場合は全体を黄色で表示
+		return colorizeTableValue(flattenedDisplay, "changed")
+	}
+
+	// フラット化
+	var currFlat, prevFlat map[string]interface{}
+
+	if currMap, ok := currObj.(map[string]interface{}); ok {
+		currFlat = flattenJSONObject(currMap, "")
+	}
+	if prevMap, ok := prevObj.(map[string]interface{}); ok {
+		prevFlat = flattenJSONObject(prevMap, "")
+	}
+
+	if currFlat == nil || prevFlat == nil {
+		// パース失敗時は全体を黄色で表示
+		return colorizeTableValue(flattenedDisplay, "changed")
+	}
+
+	// 属性ごとに比較して、異なる属性を抽出
+	differentKeys := make(map[string]bool)
+
+	// currに存在するキーで比較
+	for key, currVal := range currFlat {
+		prevVal, exists := prevFlat[key]
+		if !exists || fmt.Sprintf("%v", currVal) != fmt.Sprintf("%v", prevVal) {
+			differentKeys[key] = true
+		}
+	}
+
+	// prevに存在するがcurrに存在しないキー
+	for key := range prevFlat {
+		if _, exists := currFlat[key]; !exists {
+			differentKeys[key] = true
+		}
+	}
+
+	// flattenedDisplay を " | " で分割して、属性ごとに色分け
+	parts := strings.Split(flattenedDisplay, " | ")
+	var coloredParts []string
+
+	for _, part := range parts {
+		// "key:value" の形式から key を抽出
+		if idx := strings.Index(part, ":"); idx > 0 {
+			key := part[:idx]
+			if differentKeys[key] {
+				// 異なる属性は黄色で色付け
+				coloredParts = append(coloredParts, colorizeTableValue(part, "changed"))
+			} else {
+				// 同じ属性はそのまま
+				coloredParts = append(coloredParts, part)
+			}
+		} else {
+			coloredParts = append(coloredParts, part)
+		}
+	}
+
+	return strings.Join(coloredParts, " | ")
 }

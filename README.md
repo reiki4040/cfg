@@ -204,12 +204,11 @@ cfgctl list --stage=prod --values --show-secrets
 
 ### Parameter Store比較
 
-```bash
-# 2ステージ間の比較
-cfgctl diff --stage=dev --compare-stage=stg
+#### 2ステージ間の比較
 
-# マルチステージ比較
-cfgctl diff --stages=dev,stg,prod
+```bash
+# 基本的な比較（dev vs stg）
+cfgctl diff --stage=dev --compare-stage=stg
 
 # 特定パスの比較
 cfgctl diff --stage=dev --compare-stage=stg --path=/app/
@@ -217,12 +216,63 @@ cfgctl diff --stage=dev --compare-stage=stg --path=/app/
 # キーのみ表示
 cfgctl diff --stage=dev --compare-stage=stg --keys-only
 
-# Secret値も表示
+# Secret値も表示（危険）
 cfgctl diff --stage=dev --compare-stage=stg --show-secrets
 
 # 異なるプロファイルとの比較
 cfgctl diff --stage=dev --compare-stage=stg --compare-profile=prod-account
 ```
+
+#### マルチステージ比較
+
+複数ステージを同時に比較でき、JSON値は自動的にJSONPath形式で属性ごとに展開表示されます。
+
+```bash
+# 基本的なマルチステージ比較（dev, stg, prod）
+cfgctl diff --stages=dev,stg,prod
+
+# 特定パスのマルチステージ比較
+cfgctl diff --stages=dev,stg,prod --path=/app/config/
+
+# 色分けを無効化（ログ出力用）
+cfgctl diff --stages=dev,stg,prod --color=never
+
+# 色分けを強制有効化（パイプ出力時）
+cfgctl diff --stages=dev,stg,prod --color=always
+```
+
+**マルチステージ比較での表示形式**：
+- JSON値は自動的にJSONPath形式でフラット化
+- 各属性は改行で複数行展開
+- ステージ間の差分が視覚的に比較可能
+
+例：
+```
+/app/config                                        key1:dev-val         key1:stg-val         key1:prod-val
+                                                   key2:dev-val         key2:stg-val         key2:prod-val
+                                                   nested.sub:val       -                    nested.sub:prod-val
+```
+
+#### 色分け表示
+
+`--color` フラグで色出力を制御：
+
+```bash
+# デフォルト（ターミナルで自動有効、パイプで自動無効）
+cfgctl diff --stages=dev,stg,prod
+
+# パイプ出力時でも色を強制有効
+cfgctl diff --stages=dev,stg,prod | less -R
+
+# 色を完全に無効化
+cfgctl diff --stages=dev,stg,prod --color=never
+```
+
+**色分けルール**（隣り合うステージとの比較）：
+- **黄色**：前のステージから値が変更
+- **緑色**：前のステージに存在しない（新規追加）
+- **赤色**：前のステージには存在したが削除
+- **デフォルト色**：前のステージと値が同じ
 
 ### KMS鍵の管理
 

@@ -155,6 +155,17 @@ func runMultiStageDiff() error {
 		comparePath = getPathPrefix()
 	}
 
+	// Add {stage} placeholder if not present
+	pathForDiff := comparePath
+	if !strings.Contains(pathForDiff, "{stage}") {
+		// パスに {stage} が含まれていない場合、追加する
+		if strings.HasSuffix(pathForDiff, "/") {
+			pathForDiff = pathForDiff + "{stage}/"
+		} else {
+			pathForDiff = pathForDiff + "/{stage}"
+		}
+	}
+
 	// Create AWS client
 	awsClient, err := createAWSClient()
 	if err != nil {
@@ -167,7 +178,7 @@ func runMultiStageDiff() error {
 	// Get parameters for each stage
 	for _, s := range stages {
 		stageResolver := cfg.NewStageResolver(strings.TrimSpace(s))
-		resolvedPath := stageResolver.ResolvePath(comparePath)
+		resolvedPath := stageResolver.ResolvePath(pathForDiff)
 		
 		// Decrypt parameters if we want to show secrets
 		shouldDecrypt := diffShowSecrets
@@ -506,58 +517,83 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 		for _, key := range sortedKeys {
 			fmt.Printf("%-50s", key)
 
-			// 複数ステージでの値の異同を検出
-			valuesByStage := make(map[string]string)
-			existenceByStage := make(map[string]bool)
+			// 各ステージのパラメータを取得
+			paramsByStage := make(map[string]aws.ParameterInfo)
 			for _, stage := range stages {
 				params := stageParams[stage]
 				if param, exists := params[key]; exists {
-					existenceByStage[stage] = true
-					valuesByStage[stage] = param.Value
-				} else {
-					existenceByStage[stage] = false
+					paramsByStage[stage] = param
 				}
 			}
-			isValueDifferent := isValuesVarying(valuesByStage, existenceByStage)
 
-			for _, stage := range stages {
-				params := stageParams[stage]
-				if param, exists := params[key]; exists {
-					if param.Type == "SecureString" && !showSecrets {
-						displayValue := "***masked secret***"
-						if shouldUseColor() && isValueDifferent {
-							displayValue = colorizeTableValue(displayValue, "changed")
-						}
-						fmt.Printf(" %-32s", displayValue)
-					} else {
-						displayValue := param.Value
+			// 隣り合うステージペアで比較（ベースステージとの差分をチェック）
+			for i, stage := range stages {
+				param, exists := paramsByStage[stage]
 
-						// JSON の場合、長い値はサマリー表示
-						if len(param.Value) > 1000 {
-							// JSON かどうかチェックして、サマリー表示
-							summary := FormatJSONSummary(param.Value)
-							if len(summary) < len(param.Value) {
-								displayValue = summary
+				if !exists {
+					// パラメータが存在しないステージは赤で-を表示（削除）
+					missingValue := "-"
+					if shouldUseColor() {
+						// 前のステージに存在する場合は削除（赤）
+						if i > 0 {
+							prevStage := stages[i-1]
+							if _, prevExists := paramsByStage[prevStage]; prevExists {
+								missingValue = colorizeTableValue(missingValue, "removed")
 							}
 						}
-
-						// それでも長い場合は truncate
-						if len(displayValue) > 29 {
-							displayValue = displayValue[:29] + "..."
-						}
-
-						if shouldUseColor() && isValueDifferent {
-							displayValue = colorizeTableValue(displayValue, "changed")
-						}
-						fmt.Printf(" %-32s", displayValue)
-					}
-				} else {
-					missingValue := "-"
-					if shouldUseColor() && isValueDifferent {
-						missingValue = colorizeTableValue(missingValue, "missing")
 					}
 					fmt.Printf(" %-32s", missingValue)
+					continue
 				}
+
+				displayValue := param.Value
+
+				// JSON の場合、長い値はサマリー表示
+				if len(param.Value) > 1000 {
+					summary := FormatJSONSummary(param.Value)
+					if len(summary) < len(param.Value) {
+						displayValue = summary
+					}
+				}
+
+				// それでも長い場合は truncate
+				if len(displayValue) > 29 {
+					displayValue = displayValue[:29] + "..."
+				}
+
+				// 前のステージとの比較で色分けを判定
+				if shouldUseColor() && i > 0 {
+					prevStage := stages[i-1]
+					if prevParam, prevExists := paramsByStage[prevStage]; prevExists {
+						// 前のステージに存在する場合
+						if param.Type == "SecureString" && !showSecrets {
+							// SecureStringの場合はマスク値で比較
+							if "***masked secret***" != "***masked secret***" {
+								displayValue = "***masked secret***"
+								displayValue = colorizeTableValue(displayValue, "changed")
+							} else {
+								displayValue = "***masked secret***"
+							}
+						} else {
+							// 前のステージの値と比較
+							if param.Value != prevParam.Value {
+								// 値が異なる場合は黄色（変更）
+								displayValue = colorizeTableValue(displayValue, "changed")
+							}
+						}
+					} else {
+						// 前のステージに存在しない場合は緑色（追加）
+						if param.Type == "SecureString" && !showSecrets {
+							displayValue = "***masked secret***"
+						}
+						displayValue = colorizeTableValue(displayValue, "added")
+					}
+				} else if shouldUseColor() && i == 0 && param.Type == "SecureString" && !showSecrets {
+					// 最初のステージでSecureStringの場合はマスク値を表示
+					displayValue = "***masked secret***"
+				}
+
+				fmt.Printf(" %-32s", displayValue)
 			}
 			fmt.Println()
 		}

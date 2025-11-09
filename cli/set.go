@@ -110,7 +110,7 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		// Retrieve existing parameter
 		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
 		if err != nil {
-			return fmt.Errorf("failed to retrieve parameter %s: %w", resolvedPath, err)
+			return fmt.Errorf("parameter not found: %s (cannot update JSON attributes - parameter must exist)", resolvedPath)
 		}
 
 		// Perform batch update
@@ -195,7 +195,7 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		// Retrieve existing parameter
 		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
 		if err != nil {
-			return fmt.Errorf("failed to retrieve parameter %s: %w", resolvedPath, err)
+			return fmt.Errorf("parameter not found: %s (cannot update JSON attribute - parameter must exist)", resolvedPath)
 		}
 
 		// Update JSON attribute

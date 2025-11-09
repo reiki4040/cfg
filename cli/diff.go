@@ -556,6 +556,11 @@ func displayMultiStageDiffWithTypes(stages []string, stageParamInfos map[string]
 					}
 				}
 
+				// 改行文字をスペースに置換してテーブルの崩れを防止
+				displayValue = strings.ReplaceAll(displayValue, "\n", " ")
+				displayValue = strings.ReplaceAll(displayValue, "\r", "")
+				displayValue = strings.ReplaceAll(displayValue, "\t", " ")
+
 				// それでも長い場合は truncate
 				if len(displayValue) > 29 {
 					displayValue = displayValue[:29] + "..."

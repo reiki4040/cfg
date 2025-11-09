@@ -50,6 +50,7 @@ var (
 	setJsonFile     string
 	setJsonValidate bool
 	setDryRun       bool
+	setColorFlag    string
 )
 
 func init() {
@@ -65,12 +66,16 @@ func init() {
 	setCmd.Flags().StringVar(&setJsonFile, "json-file", "", "Set value as JSON from file")
 	setCmd.Flags().BoolVar(&setJsonValidate, "json-validate", true, "Validate JSON format (default: true)")
 	setCmd.Flags().BoolVar(&setDryRun, "dry-run", false, "Preview changes without actually setting the parameter (show diff and exit)")
+	setCmd.Flags().StringVar(&setColorFlag, "color", "auto", "Color output mode: auto (default), always, never")
 
 	// Mark flags as mutually exclusive
 	setCmd.MarkFlagsMutuallyExclusive("type", "string", "SS", "SL")
 }
 
 func runSetCommand(cmd *cobra.Command, args []string) error {
+	// Initialize color mode
+	setColorMode(setColorFlag)
+
 	parameterPath := args[0]
 	var value string
 
@@ -242,31 +247,36 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 
 		// Show diff (hide values for secrets)
 		if setType == "SecureString" {
-			fmt.Println("Current value: [HIDDEN]")
-			fmt.Println("New value:     [HIDDEN]")
+			fmt.Println(colorizeHeaderLine("Current value: [HIDDEN]"))
+			fmt.Println(colorizeHeaderLine("New value:     [HIDDEN]"))
 		} else {
 			// Try to format as JSON for better readability
 			currentFormatted, err1 := formatJsonForDisplay(existingValue)
 			newFormatted, err2 := formatJsonForDisplay(value)
 
 			if err1 == nil && err2 == nil {
-				// Both are valid JSON, show formatted
-				fmt.Println("Current value (JSON):")
-				fmt.Println(currentFormatted)
-				fmt.Println("\nNew value (JSON):")
-				fmt.Println(newFormatted)
+				// Both are valid JSON, show formatted with color
+				fmt.Println(colorizeHeaderLine("Current value (JSON):"))
+				for _, line := range strings.Split(currentFormatted, "\n") {
+					fmt.Println(colorizeRemovalLine(fmt.Sprintf("- %s", line)))
+				}
+				fmt.Println()
+				fmt.Println(colorizeHeaderLine("New value (JSON):"))
+				for _, line := range strings.Split(newFormatted, "\n") {
+					fmt.Println(colorizeAdditionLine(fmt.Sprintf("+ %s", line)))
+				}
 			} else {
-				// Show as plain text
+				// Show as plain text with color
 				if len(existingValue) > 200 {
-					fmt.Printf("Current value: %s...\n", existingValue[:200])
+					fmt.Printf("%s\n", colorizeRemovalLine(fmt.Sprintf("- Current value: %s...", existingValue[:200])))
 				} else {
-					fmt.Printf("Current value: %s\n", existingValue)
+					fmt.Printf("%s\n", colorizeRemovalLine(fmt.Sprintf("- Current value: %s", existingValue)))
 				}
 
 				if len(value) > 200 {
-					fmt.Printf("New value: %s...\n", value[:200])
+					fmt.Printf("%s\n", colorizeAdditionLine(fmt.Sprintf("+ New value: %s...", value[:200])))
 				} else {
-					fmt.Printf("New value: %s\n", value)
+					fmt.Printf("%s\n", colorizeAdditionLine(fmt.Sprintf("+ New value: %s", value)))
 				}
 			}
 		}
@@ -479,8 +489,9 @@ func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
 	}
 
 	// Display JSON attribute differences
-	fmt.Println("\n[JSON Attribute Diff]")
-	fmt.Printf("Path: %s\n", jsonPath)
+	fmt.Println()
+	fmt.Println(colorizeHeaderLine("[JSON Attribute Diff]"))
+	fmt.Println(colorizeHeaderLine(fmt.Sprintf("Path: %s", jsonPath)))
 
 	// Format both JSON objects with consistent indentation for comparison
 	oldFormatted, _ := json.MarshalIndent(oldObj, "", "  ")
@@ -518,10 +529,10 @@ func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
 		// - " " (space) for unchanged lines
 		if oldLine != newLine {
 			if oldLine != "" {
-				fmt.Printf("- %s\n", oldLine)
+				fmt.Println(colorizeRemovalLine(fmt.Sprintf("- %s", oldLine)))
 			}
 			if newLine != "" {
-				fmt.Printf("+ %s\n", newLine)
+				fmt.Println(colorizeAdditionLine(fmt.Sprintf("+ %s", newLine)))
 			}
 		} else if oldLine != "" {
 			// Print unchanged lines with space prefix for clarity

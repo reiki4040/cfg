@@ -416,15 +416,24 @@ func CompareParameters(param1, param2 aws.ParameterInfo, noJSONDiff bool) (*JSON
 	}
 
 	// パース失敗時は警告を出力して nil を返す（フォールバック）
+	// ただし、両方のパラメータが明らかに JSON ではない場合（短い文字列）は警告を出さない
 	if err1 != nil && err2 != nil {
-		// 両方パース失敗
-		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s: both stages have invalid JSON\n", param1.Name)
+		// 両方パース失敗の場合、少なくとも1つが JSON らしき形式の場合のみ警告を出す
+		// JSON のような形式：{ または [ で始まる
+		if (len(param1.Value) > 0 && (param1.Value[0] == '{' || param1.Value[0] == '[')) ||
+			(len(param2.Value) > 0 && (param2.Value[0] == '{' || param2.Value[0] == '[')) {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s: both stages have invalid JSON\n", param1.Name)
+		}
 	} else if err1 != nil {
-		// param1 のみパース失敗
-		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 1): %v\n", param1.Name, err1)
+		// param1 のみパース失敗、かつ JSON のような形式の場合のみ警告を出す
+		if len(param1.Value) > 0 && (param1.Value[0] == '{' || param1.Value[0] == '[') {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 1): %v\n", param1.Name, err1)
+		}
 	} else if err2 != nil {
-		// param2 のみパース失敗
-		fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 2): %v\n", param2.Name, err2)
+		// param2 のみパース失敗、かつ JSON のような形式の場合のみ警告を出す
+		if len(param2.Value) > 0 && (param2.Value[0] == '{' || param2.Value[0] == '[') {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse JSON for %s (stage 2): %v\n", param2.Name, err2)
+		}
 	}
 
 	// フォールバック：nil を返して文字列比較を促す

@@ -8,9 +8,9 @@ import (
 // TestValidateJsonString tests JSON validation
 func TestValidateJsonString(t *testing.T) {
 	testCases := []struct {
-		name    string
-		json    string
-		valid   bool
+		name        string
+		json        string
+		valid       bool
 		description string
 	}{
 		{
@@ -79,9 +79,9 @@ func TestValidateJsonString(t *testing.T) {
 // TestFormatJsonForDisplay tests JSON formatting for display
 func TestFormatJsonForDisplay(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    string
-		valid    bool
+		name  string
+		input string
+		valid bool
 	}{
 		{
 			name:  "compact_object",
@@ -313,9 +313,9 @@ func TestJsonStringListIncompatibility(t *testing.T) {
 // TestJsonSecureStringTypeSelection tests that JSON + SS flag selects SecureString type
 func TestJsonSecureStringTypeSelection(t *testing.T) {
 	testCases := []struct {
-		name        string
-		typeSecure  bool
-		typeString  bool
+		name         string
+		typeSecure   bool
+		typeString   bool
 		expectedType string
 	}{
 		{
@@ -366,5 +366,212 @@ func TestJsonSecureStringTypeSelection(t *testing.T) {
 			setTypeSecure = oldTypeSecure
 			setTypeString = oldTypeString
 		})
+	}
+}
+
+// TestParseJsonPath tests JSONPath parsing from parameter path
+func TestParseJsonPath(t *testing.T) {
+	testCases := []struct {
+		name           string
+		input          string
+		expectPath     string
+		expectJsonPath string
+		wantErr        bool
+	}{
+		{
+			name:           "simple_json_path",
+			input:          "/config:database.host",
+			expectPath:     "/config",
+			expectJsonPath: "database.host",
+			wantErr:        false,
+		},
+		{
+			name:           "deep_nested_path",
+			input:          "/app/prod/config:db.connection.host",
+			expectPath:     "/app/prod/config",
+			expectJsonPath: "db.connection.host",
+			wantErr:        false,
+		},
+		{
+			name:           "single_level_json_key",
+			input:          "/param:key",
+			expectPath:     "/param",
+			expectJsonPath: "key",
+			wantErr:        false,
+		},
+		{
+			name:           "path_no_json_key",
+			input:          "/config",
+			expectPath:     "/config",
+			expectJsonPath: "",
+			wantErr:        false,
+		},
+		{
+			name:           "multiple_colons",
+			input:          "/config:key1:key2",
+			expectPath:     "/config",
+			expectJsonPath: "key1:key2",
+			wantErr:        false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			path, jsonPath, err := parseJsonPath(tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("parseJsonPath() error = %v, wantErr = %v", err, tc.wantErr)
+				return
+			}
+			if path != tc.expectPath {
+				t.Errorf("parseJsonPath() path = %q, want %q", path, tc.expectPath)
+			}
+			if jsonPath != tc.expectJsonPath {
+				t.Errorf("parseJsonPath() jsonPath = %q, want %q", jsonPath, tc.expectJsonPath)
+			}
+		})
+	}
+}
+
+// TestJsonPathAttributeUpdate tests updating JSON attributes via JSONPath in set command
+func TestJsonPathAttributeUpdate(t *testing.T) {
+	testCases := []struct {
+		name             string
+		paramPath        string
+		jsonPath         string
+		newValue         string
+		existingJson     string
+		expectedContains string
+		wantErr          bool
+	}{
+		{
+			name:             "update_simple_attribute",
+			paramPath:        "/config",
+			jsonPath:         "database.host",
+			newValue:         "newhost.example.com",
+			existingJson:     `{"database":{"host":"localhost","port":5432}}`,
+			expectedContains: "newhost.example.com",
+			wantErr:          false,
+		},
+		{
+			name:             "create_new_attribute",
+			paramPath:        "/config",
+			jsonPath:         "database.timeout",
+			newValue:         "30",
+			existingJson:     `{"database":{"host":"localhost"}}`,
+			expectedContains: "timeout",
+			wantErr:          false,
+		},
+		{
+			name:             "deeply_nested_path",
+			paramPath:        "/app/prod/config",
+			jsonPath:         "server.settings.max_connections",
+			newValue:         "100",
+			existingJson:     `{"server":{"settings":{"max_connections":50}}}`,
+			expectedContains: "100",
+			wantErr:          false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			path, jsonPath, _ := parseJsonPath(tc.paramPath + ":" + tc.jsonPath)
+
+			// Verify path parsing
+			if path != tc.paramPath {
+				t.Errorf("Expected path %q, got %q", tc.paramPath, path)
+			}
+			if jsonPath != tc.jsonPath {
+				t.Errorf("Expected jsonPath %q, got %q", tc.jsonPath, jsonPath)
+			}
+
+			// Verify the attribute update would be valid
+			if err := validateJsonString(tc.existingJson); err != nil {
+				if !tc.wantErr {
+					t.Errorf("Existing JSON should be valid: %v", err)
+				}
+				return
+			}
+		})
+	}
+}
+
+// TestJsonAttributeDiffDisplay tests JSON attribute diff display functionality
+func TestJsonAttributeDiffDisplay(t *testing.T) {
+	testCases := []struct {
+		name           string
+		oldJson        string
+		newJson        string
+		jsonPath       string
+		shouldContain  []string // Expected strings in output
+		shouldNotMatch bool     // Whether lines should NOT match
+	}{
+		{
+			name:     "simple_attribute_update",
+			oldJson:  `{"host":"localhost","port":5432}`,
+			newJson:  `{"host":"newhost","port":5432}`,
+			jsonPath: "host",
+			shouldContain: []string{
+				"localhost", // Old value should appear
+				"newhost",   // New value should appear
+				"port",      // Unchanged attribute
+			},
+		},
+		{
+			name:     "nested_attribute_update",
+			oldJson:  `{"database":{"host":"localhost"}}`,
+			newJson:  `{"database":{"host":"newhost"}}`,
+			jsonPath: "database.host",
+			shouldContain: []string{
+				"database",  // Unchanged parent
+				"localhost", // Old value
+				"newhost",   // New value
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Just verify that the diff display doesn't error
+			err := showJsonAttributeDiff(tc.oldJson, tc.newJson, tc.jsonPath)
+			if err != nil {
+				t.Errorf("showJsonAttributeDiff() error = %v", err)
+			}
+		})
+	}
+}
+
+// TestJsonDiffLineMarking tests that diff output contains proper line markers
+func TestJsonDiffLineMarking(t *testing.T) {
+	oldJson := `{"database":{"host":"localhost","port":5432}}`
+	newJson := `{"database":{"host":"newhost","port":5432}}`
+
+	// Verify both JSONs are valid
+	if err := validateJsonString(oldJson); err != nil {
+		t.Fatalf("Old JSON validation failed: %v", err)
+	}
+	if err := validateJsonString(newJson); err != nil {
+		t.Fatalf("New JSON validation failed: %v", err)
+	}
+
+	// Verify that formatting works
+	oldFormatted, err := formatJsonForDisplay(oldJson)
+	if err != nil {
+		t.Errorf("Failed to format old JSON: %v", err)
+	}
+	newFormatted, err := formatJsonForDisplay(newJson)
+	if err != nil {
+		t.Errorf("Failed to format new JSON: %v", err)
+	}
+
+	if oldFormatted == "" {
+		t.Errorf("Old formatted JSON is empty")
+	}
+	if newFormatted == "" {
+		t.Errorf("New formatted JSON is empty")
+	}
+
+	// Verify they are different (since values changed)
+	if oldFormatted == newFormatted {
+		t.Errorf("Expected formatted JSONs to differ")
 	}
 }

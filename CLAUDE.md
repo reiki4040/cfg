@@ -19,6 +19,7 @@ Kiro-style Spec Driven Development implementation using claude code slash comman
 - `secrets-manager-yaml-integration` - AWS Secrets Manager と YAML 設定ファイルのシームレスな統合（保留中）
 - `json-attribute-diff` - JSON の差分を属性単位で出力する機能
 - `cfgctl-diff-coloring` - cfgctl diffの差分に色をつけて人間が見やすくする機能
+- `json-attribute-update-jsonpath` - JSONの設定されている属性にjsonpathで個別属性の追加変更できるようにする機能
 - Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 

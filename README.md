@@ -188,6 +188,26 @@ cfgctl list {stage}/db --stage=prod --values
 cfgctl delete {stage}/db/old_param --stage=prod
 ```
 
+#### JSON属性の一括更新（--keys オプション）
+
+複数の JSON 属性を 1 つのコマンドで更新：
+
+```bash
+# 複数の JSON 属性を一括更新
+cfgctl set /app/config --keys 'database.host=newhost,database.port=3306'
+
+# ドライラン（変更内容を確認）
+cfgctl set /app/config --keys 'server.host=api.com,server.port=8080' --dry-run
+
+# ステージ別設定の一括更新
+cfgctl set /{stage}/config --keys 'log_level=debug,cache_ttl=600' --stage=dev --overwrite
+
+# SecureString として保存
+cfgctl set /app/secrets --keys 'api_key=newkey,db_password=newpass' --SS
+```
+
+詳細は [SET_JSON_GUIDE.md](SET_JSON_GUIDE.md) の「Batch Update Multiple JSON Attributes」を参照してください。
+
 #### パラメータタイプ指定
 
 - `-S` または `--string`: String型

@@ -29,11 +29,11 @@ func NewParameterStoreClient(ctx context.Context, region string) (*ParameterStor
 func NewParameterStoreClientWithProfile(ctx context.Context, region, profile string) (*ParameterStoreClient, error) {
 	var opts []func(*config.LoadOptions) error
 	opts = append(opts, config.WithRegion(region))
-	
+
 	if profile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(profile))
 	}
-	
+
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config with profile %s: %w", profile, err)

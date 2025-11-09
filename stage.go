@@ -6,14 +6,14 @@ import (
 )
 
 const (
-	DefaultStage          = "dev"
-	StageEnvVar           = "CFG_STAGE"
-	StagePlaceholder      = "{stage}"
+	DefaultStage           = "dev"
+	StageEnvVar            = "CFG_STAGE"
+	StagePlaceholder       = "{stage}"
 	StagePrefixPlaceholder = "{stage-prefix}"
 )
 
 type StageResolver struct {
-	stage            string
+	stage             string
 	stagePrefixBlanks map[string]bool
 }
 
@@ -26,9 +26,9 @@ func NewStageResolverWithPrefixBlanks(stage string, stagePrefixBlanks []string) 
 	for _, s := range stagePrefixBlanks {
 		blankMap[s] = true
 	}
-	
+
 	return &StageResolver{
-		stage:            resolveStageValue(stage),
+		stage:             resolveStageValue(stage),
 		stagePrefixBlanks: blankMap,
 	}
 }
@@ -49,7 +49,7 @@ func (s *StageResolver) resolveStagePrefixPlaceholder(input string) string {
 	if !strings.Contains(input, StagePrefixPlaceholder) {
 		return input
 	}
-	
+
 	var stagePrefix string
 	if s.stagePrefixBlanks[s.stage] {
 		// This stage should be blank (no prefix)
@@ -58,7 +58,7 @@ func (s *StageResolver) resolveStagePrefixPlaceholder(input string) string {
 		// Add dash suffix to stage
 		stagePrefix = s.stage + "-"
 	}
-	
+
 	return strings.ReplaceAll(input, StagePrefixPlaceholder, stagePrefix)
 }
 

@@ -71,9 +71,30 @@ go test -cover ./...
 # 依存関係の更新チェック
 go list -u -m all
 
-# コードフォーマット
+# コードフォーマット（各タスク完了後に必ず実行）
 go fmt ./...
 ```
+
+### Code Quality Standards
+
+#### Formatting & Linting
+- **Format Enforcement**: 全コード変更後は `go fmt ./...` を **必ず実行** する
+  - タスク 1, 2, 3, 4, 6, 8 の実装完了後
+  - テストファイル追加時
+  - 新規ファイル作成時
+- **目的**: Go のコードスタイルガイドへの準拠、一貫性の確保
+
+#### GoDoc Comments
+- 全 **公開関数** (`func FunctionName`) に GoDoc コメント付与
+- 全 **公開型** (`type TypeName`) に GoDoc コメント付与
+- 非公開関数・型のコメントは複雑なロジックに限定
+
+#### Code Comments
+- **複雑なアルゴリズム**: 処理の流れを説明するコメント付与
+  - 再帰的ロジック（`updateObjectWithKeys`）
+  - 状態遷移（JSONPath 検出フロー）
+  - エラーハンドリングロジック
+- **意図の明確化**: "なぜ" の説明を優先（"何を" ではなく）
 
 ## Environment Variables
 

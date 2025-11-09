@@ -26,14 +26,14 @@ type Reference struct {
 }
 
 type Resolver struct {
-	psClient       *aws.ParameterStoreClient
-	envVars        map[string]string
-	cache          map[string]string
-	stageResolver  *StageResolver
-	pathPrefix     string
-	jsonCache      *JsonCache
-	jsonExtractor  *JsonPathExtractor
-	logger         *Logger
+	psClient      *aws.ParameterStoreClient
+	envVars       map[string]string
+	cache         map[string]string
+	stageResolver *StageResolver
+	pathPrefix    string
+	jsonCache     *JsonCache
+	jsonExtractor *JsonPathExtractor
+	logger        *Logger
 }
 
 func NewResolver(psClient *aws.ParameterStoreClient, stageResolver *StageResolver) *Resolver {
@@ -144,7 +144,7 @@ func (r *Resolver) ResolveReferences(ctx context.Context, refs []Reference) (map
 	// Group Parameter Store references for batch retrieval
 	var psKeys []string
 	psRefMap := make(map[string][]Reference)
-	
+
 	for _, ref := range refs {
 		switch ref.Type {
 		case "ps":
@@ -326,10 +326,10 @@ func (r *Resolver) InterpolateString(input string, values map[string]string) str
 	for placeholder, value := range values {
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
-	
+
 	// Resolve stage placeholders
 	result = r.stageResolver.ResolveString(result)
-	
+
 	return result
 }
 

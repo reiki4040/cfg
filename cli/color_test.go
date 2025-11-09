@@ -259,9 +259,9 @@ func TestColorizeJsonDiffOutput(t *testing.T) {
 
 func TestSetColorMode(t *testing.T) {
 	tests := []struct {
-		name    string
-		mode    string
-		want    bool
+		name string
+		mode string
+		want bool
 	}{
 		{
 			name: "always",
@@ -296,34 +296,34 @@ func TestSetColorMode(t *testing.T) {
 
 func TestIsValuesVarying(t *testing.T) {
 	tests := []struct {
-		name              string
-		valuesByStage     map[string]string
-		existenceByStage  map[string]bool
-		expected          bool
+		name             string
+		valuesByStage    map[string]string
+		existenceByStage map[string]bool
+		expected         bool
 	}{
 		{
-			name:              "same values",
-			valuesByStage:     map[string]string{"dev": "val", "stg": "val", "prod": "val"},
-			existenceByStage:  map[string]bool{"dev": true, "stg": true, "prod": true},
-			expected:          false,
+			name:             "same values",
+			valuesByStage:    map[string]string{"dev": "val", "stg": "val", "prod": "val"},
+			existenceByStage: map[string]bool{"dev": true, "stg": true, "prod": true},
+			expected:         false,
 		},
 		{
-			name:              "different values",
-			valuesByStage:     map[string]string{"dev": "val1", "stg": "val2", "prod": "val1"},
-			existenceByStage:  map[string]bool{"dev": true, "stg": true, "prod": true},
-			expected:          true,
+			name:             "different values",
+			valuesByStage:    map[string]string{"dev": "val1", "stg": "val2", "prod": "val1"},
+			existenceByStage: map[string]bool{"dev": true, "stg": true, "prod": true},
+			expected:         true,
 		},
 		{
-			name:              "missing stage",
-			valuesByStage:     map[string]string{"dev": "val", "stg": "val"},
-			existenceByStage:  map[string]bool{"dev": true, "stg": true, "prod": false},
-			expected:          true,
+			name:             "missing stage",
+			valuesByStage:    map[string]string{"dev": "val", "stg": "val"},
+			existenceByStage: map[string]bool{"dev": true, "stg": true, "prod": false},
+			expected:         true,
 		},
 		{
-			name:              "empty values",
-			valuesByStage:     map[string]string{},
-			existenceByStage:  map[string]bool{},
-			expected:          false,
+			name:             "empty values",
+			valuesByStage:    map[string]string{},
+			existenceByStage: map[string]bool{},
+			expected:         false,
 		},
 	}
 

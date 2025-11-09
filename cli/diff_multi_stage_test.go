@@ -8,10 +8,10 @@ import (
 // TestMultiStageDiffPathResolution: --stagesでの{stage}プレースホルダー追加テスト
 func TestMultiStageDiffPathResolution(t *testing.T) {
 	tests := []struct {
-		name           string
-		inputPath      string
-		expectedPath   string
-		description    string
+		name         string
+		inputPath    string
+		expectedPath string
+		description  string
 	}{
 		{
 			name:         "PathWithoutStageHolder",

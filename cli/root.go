@@ -6,15 +6,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"github.com/reiki4040/cfg/aws"
 	"github.com/reiki4040/cfg"
+	"github.com/reiki4040/cfg/aws"
+	"github.com/spf13/cobra"
 )
 
 var (
-	stage     string
-	awsRegion string
-	awsProfile string
+	stage       string
+	awsRegion   string
+	awsProfile  string
 	showVersion bool
 )
 
@@ -44,7 +44,7 @@ func Execute() error {
 func init() {
 	// Load defaults from config file
 	defaultRegion, defaultStage := getDefaultRegionAndStage()
-	
+
 	rootCmd.PersistentFlags().StringVar(&stage, "stage", defaultStage, "Configuration stage (dev, stg, prod)")
 	rootCmd.PersistentFlags().StringVar(&awsRegion, "region", defaultRegion, "AWS region")
 	rootCmd.PersistentFlags().StringVar(&awsProfile, "profile", "", "AWS profile")
@@ -62,7 +62,7 @@ func createStageResolver() *cfg.StageResolver {
 
 func resolveParameterPath(path string, stageResolver *cfg.StageResolver) string {
 	pathPrefix := getPathPrefix()
-	
+
 	// Apply path prefix if configured
 	if pathPrefix != "" {
 		// Normalize prefix to ensure it starts with / and doesn't end with /
@@ -70,12 +70,12 @@ func resolveParameterPath(path string, stageResolver *cfg.StageResolver) string 
 			pathPrefix = "/" + pathPrefix
 		}
 		pathPrefix = strings.TrimSuffix(pathPrefix, "/")
-		
+
 		// If path prefix contains {stage} placeholder, resolve it first
 		if strings.Contains(pathPrefix, "{stage}") {
 			pathPrefix = stageResolver.ResolvePath(pathPrefix)
 		}
-		
+
 		// For paths starting with /, combine prefix + path
 		// For relative paths, treat them as absolute within the prefix
 		if strings.HasPrefix(path, "/") {
@@ -89,7 +89,7 @@ func resolveParameterPath(path string, stageResolver *cfg.StageResolver) string 
 			path = "/" + path
 		}
 	}
-	
+
 	return stageResolver.ResolvePath(path)
 }
 
@@ -100,7 +100,7 @@ func printError(err error) {
 func isSecretParameter(path string) bool {
 	lowerPath := strings.ToLower(path)
 	secretKeywords := []string{"password", "secret", "key", "token", "credential"}
-	
+
 	for _, keyword := range secretKeywords {
 		if strings.Contains(lowerPath, keyword) {
 			return true

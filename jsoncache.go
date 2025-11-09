@@ -7,10 +7,10 @@ import (
 
 // JsonCache stores parsed JSON objects with TTL-based expiration
 type JsonCache struct {
-	entries map[string]map[string]interface{}
-	ttl     map[string]time.Time
+	entries     map[string]map[string]interface{}
+	ttl         map[string]time.Time
 	ttlDuration time.Duration
-	mu      sync.RWMutex
+	mu          sync.RWMutex
 }
 
 // NewJsonCache creates a new JSON cache with the specified TTL duration

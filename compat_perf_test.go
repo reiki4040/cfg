@@ -353,10 +353,10 @@ func TestExtractorValidation(t *testing.T) {
 	extractor := NewJsonPathExtractor()
 
 	testCases := []struct {
-		name     string
-		json     string
-		path     string
-		valid    bool
+		name  string
+		json  string
+		path  string
+		valid bool
 	}{
 		{
 			name:  "valid simple",

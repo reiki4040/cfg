@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/reiki4040/cfg"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -22,6 +23,8 @@ JSON values can be set using --json flag, either from file or as inline JSON str
 JSON values can be stored as either String (default) or SecureString (--SS) for encrypted storage.
 Note: JSON values cannot be stored as StringList. Use --S (String) or --SS (SecureString) instead.
 
+Use --dry-run flag to preview changes without actually modifying Parameter Store.
+
 Examples:
   cfgctl set /app/{stage}/db/password --stage=prod --SS
   cfgctl set /app/prod/api/timeout "30" -S --no-interactive
@@ -29,22 +32,26 @@ Examples:
   cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}'
   cfgctl set /app/prod/config --json='{"host":"localhost","port":5432}' --SS
   cfgctl set /app/prod/config --json-file=config.json
-  cfgctl set /app/prod/config --json-file=config.json --SS`,
+  cfgctl set /app/prod/config --json-file=config.json --SS
+  cfgctl set /app/prod/config --json='{"host":"newhost"}' --dry-run`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runSetCommand,
 }
 
 var (
-	setType        string
-	setOverwrite   bool
-	setInteractive bool
-	setKMSKeyID    string
-	setTypeString  bool
-	setTypeSecure  bool
-	setTypeList    bool
-	setJsonValue   string
-	setJsonFile    string
+	setType         string
+	setOverwrite    bool
+	setInteractive  bool
+	setKMSKeyID     string
+	setTypeString   bool
+	setTypeSecure   bool
+	setTypeList     bool
+	setJsonValue    string
+	setJsonFile     string
 	setJsonValidate bool
+	setDryRun       bool
+	setColorFlag    string
+	setKeys         string
 )
 
 func init() {
@@ -59,15 +66,218 @@ func init() {
 	setCmd.Flags().StringVar(&setJsonValue, "json", "", "Set value as JSON string (inline JSON)")
 	setCmd.Flags().StringVar(&setJsonFile, "json-file", "", "Set value as JSON from file")
 	setCmd.Flags().BoolVar(&setJsonValidate, "json-validate", true, "Validate JSON format (default: true)")
+	setCmd.Flags().BoolVar(&setDryRun, "dry-run", false, "Preview changes without actually setting the parameter (show diff and exit)")
+	setCmd.Flags().StringVar(&setColorFlag, "color", "auto", "Color output mode: auto (default), always, never")
+	setCmd.Flags().StringVar(&setKeys, "keys", "", "Batch update multiple JSON attributes (e.g., 'key1=value1,key2=value2')")
 
 	// Mark flags as mutually exclusive
 	setCmd.MarkFlagsMutuallyExclusive("type", "string", "SS", "SL")
 }
 
 func runSetCommand(cmd *cobra.Command, args []string) error {
+	// Initialize color mode
+	setColorMode(setColorFlag)
+
 	parameterPath := args[0]
 	var value string
 
+	// Parse JSONPath from parameter path (e.g., "/config:database.host")
+	resolvedParamPath, jsonPath, err := parseJsonPath(parameterPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse parameter path: %w", err)
+	}
+
+	// Create stage resolver for path resolution
+	stageResolver := createStageResolver()
+	resolvedPath := resolveParameterPath(resolvedParamPath, stageResolver)
+
+	// Handle batch update via --keys option
+	if setKeys != "" {
+		// Parse keys option
+		updates, err := parseKeysOption(setKeys)
+		if err != nil {
+			return fmt.Errorf("failed to parse --keys option: %w", err)
+		}
+
+		// Create AWS client
+		awsClient, err := createAWSClient()
+		if err != nil {
+			return fmt.Errorf("failed to create AWS client: %w", err)
+		}
+
+		ctx := context.Background()
+
+		// Retrieve existing parameter or initialize with empty JSON
+		var existingValue string
+		isNewParameter := false
+		existingValue, err = awsClient.GetParameter(ctx, resolvedPath, true)
+		if err != nil {
+			// Parameter doesn't exist - initialize with empty JSON object
+			existingValue = "{}"
+			isNewParameter = true
+		}
+
+		// Perform batch update
+		updatedValue, err := batchUpdateAttributes(existingValue, updates)
+		if err != nil {
+			return fmt.Errorf("failed to batch update JSON attributes: %w", err)
+		}
+
+		// Check if there are any changes (only for existing parameters)
+		if !isNewParameter && existingValue == updatedValue {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
+		// Show message and diff
+		if isNewParameter {
+			fmt.Printf("Creating new parameter %s with JSON attributes\n", resolvedPath)
+		} else {
+			fmt.Printf("Parameter %s - Batch JSON attributes update\n", resolvedPath)
+		}
+		if err := showJsonAttributeDiff(existingValue, updatedValue, "multiple attributes"); err != nil {
+			return fmt.Errorf("failed to show diff: %w", err)
+		}
+
+		// If dry-run mode, exit here without asking for confirmation or making actual changes
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
+		}
+
+		// Ask for confirmation unless --overwrite flag is used
+		if !setOverwrite {
+			confirmed, err := confirmOverwrite(resolvedPath)
+			if err != nil {
+				return fmt.Errorf("failed to get confirmation: %w", err)
+			}
+			if !confirmed {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+		}
+
+		// Determine KMS key and parameter type
+		paramType := "String"
+		if setTypeSecure {
+			paramType = "SecureString"
+		} else if setTypeString {
+			paramType = "String"
+		}
+
+		kmsKey := setKMSKeyID
+		if kmsKey == "" && paramType == "SecureString" {
+			kmsKey = getKMSKeyForStageAndRegion(stageResolver.GetStage(), awsRegion)
+		}
+
+		// Update parameter
+		if kmsKey != "" && paramType == "SecureString" {
+			err = awsClient.PutParameterWithKey(ctx, resolvedPath, updatedValue, paramType, true, kmsKey)
+		} else {
+			err = awsClient.PutParameter(ctx, resolvedPath, updatedValue, paramType, true)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to update parameter %s: %w", resolvedPath, err)
+		}
+
+		fmt.Printf("Successfully updated JSON attributes in parameter: %s\n", resolvedPath)
+		return nil
+	}
+
+	// Handle JSONPath-based attribute update
+	if jsonPath != "" {
+		// JSONPath update flow
+		if len(args) < 2 {
+			return fmt.Errorf("value is required for JSONPath attribute update")
+		}
+		newValue := args[1]
+
+		// Create AWS client
+		awsClient, err := createAWSClient()
+		if err != nil {
+			return fmt.Errorf("failed to create AWS client: %w", err)
+		}
+
+		ctx := context.Background()
+
+		// Retrieve existing parameter or initialize with empty JSON
+		var existingValue string
+		isNewParameter := false
+		existingValue, err = awsClient.GetParameter(ctx, resolvedPath, true)
+		if err != nil {
+			// Parameter doesn't exist - initialize with empty JSON object
+			existingValue = "{}"
+			isNewParameter = true
+		}
+
+		// Update JSON attribute
+		updatedValue, err := cfg.UpdateJsonAttribute(existingValue, jsonPath, newValue)
+		if err != nil {
+			return fmt.Errorf("failed to update JSON attribute: %w", err)
+		}
+
+		// Check if there are any changes (only for existing parameters)
+		if !isNewParameter && existingValue == updatedValue {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
+		// Show message and diff
+		if isNewParameter {
+			fmt.Printf("Creating new parameter %s with JSON attribute\n", resolvedPath)
+		} else {
+			fmt.Printf("Parameter %s - JSONPath update: %s\n", resolvedPath, jsonPath)
+		}
+		if err := showJsonAttributeDiff(existingValue, updatedValue, jsonPath); err != nil {
+			return fmt.Errorf("failed to show diff: %w", err)
+		}
+
+		// If dry-run mode, exit here without asking for confirmation or making actual changes
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
+		}
+
+		// Ask for confirmation unless --overwrite flag is used
+		if !setOverwrite {
+			confirmed, err := confirmOverwrite(resolvedPath)
+			if err != nil {
+				return fmt.Errorf("failed to get confirmation: %w", err)
+			}
+			if !confirmed {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+		}
+
+		// Determine KMS key and parameter type
+		paramType := "String"
+		if setTypeSecure {
+			paramType = "SecureString"
+		} else if setTypeString {
+			paramType = "String"
+		}
+
+		kmsKey := setKMSKeyID
+		if kmsKey == "" && paramType == "SecureString" {
+			kmsKey = getKMSKeyForStageAndRegion(stageResolver.GetStage(), awsRegion)
+		}
+
+		// Update parameter
+		if kmsKey != "" && paramType == "SecureString" {
+			err = awsClient.PutParameterWithKey(ctx, resolvedPath, updatedValue, paramType, true, kmsKey)
+		} else {
+			err = awsClient.PutParameter(ctx, resolvedPath, updatedValue, paramType, true)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to update parameter %s: %w", resolvedPath, err)
+		}
+
+		fmt.Printf("Successfully updated JSON attribute in parameter: %s\n", resolvedPath)
+		return nil
+	}
+
+	// Standard value update flow (non-JSONPath)
 	// Handle JSON input first
 	if setJsonValue != "" || setJsonFile != "" {
 		// Validate that JSON is not being stored as StringList
@@ -118,7 +328,7 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		if !setInteractive && len(args) < 2 {
 			// Interactive mode by default
 			var err error
-			value, err = promptForValue(parameterPath, setType == "SecureString")
+			value, err = promptForValue(resolvedPath, setType == "SecureString")
 			if err != nil {
 				return fmt.Errorf("failed to get value interactively: %w", err)
 			}
@@ -135,49 +345,61 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create AWS client: %w", err)
 	}
 
-	// Create stage resolver and resolve path
-	stageResolver := createStageResolver()
-	resolvedPath := resolveParameterPath(parameterPath, stageResolver)
-
-
 	ctx := context.Background()
 
 	// Check if parameter already exists and show diff
 	existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
 	parameterExists := (err == nil)
-	
+
 	if parameterExists {
+		// Check if there are any changes
+		if existingValue == value {
+			fmt.Println("No change detected.")
+			return nil
+		}
+
 		fmt.Printf("Parameter %s already exists.\n", resolvedPath)
 
 		// Show diff (hide values for secrets)
 		if setType == "SecureString" {
-			fmt.Println("Current value: [HIDDEN]")
-			fmt.Println("New value:     [HIDDEN]")
+			fmt.Println(colorizeHeaderLine("Current value: [HIDDEN]"))
+			fmt.Println(colorizeHeaderLine("New value:     [HIDDEN]"))
 		} else {
 			// Try to format as JSON for better readability
 			currentFormatted, err1 := formatJsonForDisplay(existingValue)
 			newFormatted, err2 := formatJsonForDisplay(value)
 
 			if err1 == nil && err2 == nil {
-				// Both are valid JSON, show formatted
-				fmt.Println("Current value (JSON):")
-				fmt.Println(currentFormatted)
-				fmt.Println("\nNew value (JSON):")
-				fmt.Println(newFormatted)
+				// Both are valid JSON, show formatted with color
+				fmt.Println(colorizeHeaderLine("Current value (JSON):"))
+				for _, line := range strings.Split(currentFormatted, "\n") {
+					fmt.Println(colorizeRemovalLine(fmt.Sprintf("- %s", line)))
+				}
+				fmt.Println()
+				fmt.Println(colorizeHeaderLine("New value (JSON):"))
+				for _, line := range strings.Split(newFormatted, "\n") {
+					fmt.Println(colorizeAdditionLine(fmt.Sprintf("+ %s", line)))
+				}
 			} else {
-				// Show as plain text
+				// Show as plain text with color
 				if len(existingValue) > 200 {
-					fmt.Printf("Current value: %s...\n", existingValue[:200])
+					fmt.Printf("%s\n", colorizeRemovalLine(fmt.Sprintf("- Current value: %s...", existingValue[:200])))
 				} else {
-					fmt.Printf("Current value: %s\n", existingValue)
+					fmt.Printf("%s\n", colorizeRemovalLine(fmt.Sprintf("- Current value: %s", existingValue)))
 				}
 
 				if len(value) > 200 {
-					fmt.Printf("New value: %s...\n", value[:200])
+					fmt.Printf("%s\n", colorizeAdditionLine(fmt.Sprintf("+ New value: %s...", value[:200])))
 				} else {
-					fmt.Printf("New value: %s\n", value)
+					fmt.Printf("%s\n", colorizeAdditionLine(fmt.Sprintf("+ New value: %s", value)))
 				}
 			}
+		}
+
+		// If dry-run mode, exit here without asking for confirmation
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
 		}
 
 		// Ask for confirmation unless --overwrite flag is used
@@ -191,6 +413,12 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 		}
+	}
+
+	// If dry-run mode, exit here without making actual changes
+	if setDryRun {
+		fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+		return nil
 	}
 
 	// Determine KMS key to use
@@ -226,20 +454,20 @@ func promptForValue(parameterPath string, isSecret bool) (string, error) {
 		if !term.IsTerminal(int(syscall.Stdin)) {
 			return "", fmt.Errorf("secure input requires an interactive terminal")
 		}
-		
+
 		// Hide input for secure strings
 		byteValue, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
 			return "", fmt.Errorf("failed to read secure input: %w", err)
 		}
 		fmt.Println() // Print newline after hidden input
-		
+
 		// Validate minimum length for security
 		value := string(byteValue)
 		if len(value) == 0 {
 			return "", fmt.Errorf("secure parameter value cannot be empty")
 		}
-		
+
 		return value, nil
 	} else {
 		// Normal input for non-secure strings
@@ -254,7 +482,7 @@ func promptForValue(parameterPath string, isSecret bool) (string, error) {
 
 func confirmOverwrite(parameterPath string) (bool, error) {
 	fmt.Printf("Are you sure you want to overwrite parameter '%s'? (y/N): ", parameterPath)
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -328,4 +556,165 @@ func formatJsonForDisplay(jsonStr string) (string, error) {
 	}
 
 	return string(formatted), nil
+}
+
+// parseJsonPath splits a parameter path into parameter path and JSONPath.
+// It separates the parameter path from the JSONPath by splitting on the first colon.
+// Format: "/parameter/path:json.path"
+// Example: "/config:database.host" returns ("/config", "database.host")
+// If no colon is present, returns the full path and empty JSONPath.
+//
+// This function enables JSONPath-based attribute updates while maintaining backward
+// compatibility with standard parameter paths that don't contain colons.
+func parseJsonPath(input string) (paramPath string, jsonPath string, err error) {
+	colonIndex := strings.Index(input, ":")
+	if colonIndex == -1 {
+		// No JSONPath specified, just return the parameter path
+		return input, "", nil
+	}
+
+	paramPath = input[:colonIndex]
+	jsonPath = input[colonIndex+1:]
+
+	return paramPath, jsonPath, nil
+}
+
+// parseKeysOption parses the --keys option value into a map of key-value pairs.
+// Format: "key1=value1,key2=value2,..."
+// Returns a map of key paths to values and an error if parsing fails.
+func parseKeysOption(keysStr string) (map[string]string, error) {
+	keyPairs := make(map[string]string)
+
+	if keysStr == "" {
+		return keyPairs, nil
+	}
+
+	// Split by comma to get individual key=value pairs
+	pairs := strings.Split(keysStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		// Split each pair by the first equals sign
+		eqIdx := strings.Index(pair, "=")
+		if eqIdx == -1 {
+			return nil, fmt.Errorf("invalid key=value pair format: '%s' (expected 'key=value')", pair)
+		}
+
+		keyPath := strings.TrimSpace(pair[:eqIdx])
+		value := strings.TrimSpace(pair[eqIdx+1:])
+
+		if keyPath == "" {
+			return nil, fmt.Errorf("empty key path in pair: '%s'", pair)
+		}
+
+		// Store the key-value pair (value can be empty)
+		keyPairs[keyPath] = value
+	}
+
+	if len(keyPairs) == 0 {
+		return nil, fmt.Errorf("no valid key=value pairs found in: '%s'", keysStr)
+	}
+
+	return keyPairs, nil
+}
+
+// batchUpdateAttributes updates multiple JSON attributes in a single JSON object.
+// It takes the original JSON string and applies updates for each key-value pair in the map.
+// If any update fails, the entire operation fails and returns an error.
+// Returns the updated JSON string and an error if any operation fails.
+func batchUpdateAttributes(originalJSON string, updates map[string]string) (string, error) {
+	currentJSON := originalJSON
+
+	// Apply each update sequentially
+	for keyPath, newValue := range updates {
+		updatedJSON, err := cfg.UpdateJsonAttribute(currentJSON, keyPath, newValue)
+		if err != nil {
+			return "", fmt.Errorf("failed to update attribute '%s': %w", keyPath, err)
+		}
+		currentJSON = updatedJSON
+	}
+
+	return currentJSON, nil
+}
+
+// showJsonAttributeDiff displays a formatted line-by-line diff of JSON attribute changes
+// when updating a specific JSON path within a parameter.
+// It formats both the old and new JSON with indentation and displays lines with markers:
+// - Lines starting with "-" indicate removed content from the old JSON
+// - Lines starting with "+" indicate added content in the new JSON
+// - Lines starting with spaces indicate unchanged content
+//
+// Parameters:
+//   - oldJSON: the original JSON string
+//   - newJSON: the modified JSON string
+//   - jsonPath: the JSONPath that was modified (displayed in the diff header)
+//
+// Returns an error if either JSON string cannot be parsed.
+func showJsonAttributeDiff(oldJSON, newJSON string, jsonPath string) error {
+	var oldObj, newObj interface{}
+
+	// Parse both JSON values
+	if err := json.Unmarshal([]byte(oldJSON), &oldObj); err != nil {
+		return fmt.Errorf("failed to parse old JSON: %w", err)
+	}
+	if err := json.Unmarshal([]byte(newJSON), &newObj); err != nil {
+		return fmt.Errorf("failed to parse new JSON: %w", err)
+	}
+
+	// Display JSON attribute differences
+	fmt.Println()
+	fmt.Println(colorizeHeaderLine("[JSON Attribute Diff]"))
+	fmt.Println(colorizeHeaderLine(fmt.Sprintf("Path: %s", jsonPath)))
+
+	// Format both JSON objects with consistent indentation for comparison
+	oldFormatted, _ := json.MarshalIndent(oldObj, "", "  ")
+	newFormatted, _ := json.MarshalIndent(newObj, "", "  ")
+
+	// Split formatted JSON into lines for line-by-line comparison
+	oldLines := strings.Split(string(oldFormatted), "\n")
+	newLines := strings.Split(string(newFormatted), "\n")
+
+	// Perform simple line-by-line diff display
+	// This approach iterates through both line arrays simultaneously,
+	// comparing lines at the same index position
+	maxLines := len(oldLines)
+	if len(newLines) > maxLines {
+		maxLines = len(newLines)
+	}
+
+	// Iterate through all lines, padding with empty strings as needed
+	for i := 0; i < maxLines; i++ {
+		oldLine := ""
+		newLine := ""
+
+		// Get line from old JSON if available, otherwise use empty string
+		if i < len(oldLines) {
+			oldLine = oldLines[i]
+		}
+		// Get line from new JSON if available, otherwise use empty string
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+
+		// Output diff markers based on line comparison:
+		// - "-" for lines only in old JSON
+		// - "+" for lines only in new JSON
+		// - " " (space) for unchanged lines
+		if oldLine != newLine {
+			if oldLine != "" {
+				fmt.Println(colorizeRemovalLine(fmt.Sprintf("- %s", oldLine)))
+			}
+			if newLine != "" {
+				fmt.Println(colorizeAdditionLine(fmt.Sprintf("+ %s", newLine)))
+			}
+		} else if oldLine != "" {
+			// Print unchanged lines with space prefix for clarity
+			fmt.Printf("  %s\n", oldLine)
+		}
+	}
+
+	return nil
 }

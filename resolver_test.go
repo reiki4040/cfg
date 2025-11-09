@@ -8,8 +8,8 @@ import (
 
 func TestPsReferenceRegex(t *testing.T) {
 	testCases := []struct {
-		input    string
-		expected string
+		input       string
+		expected    string
 		shouldMatch bool
 	}{
 		{"${ps:/app/simple}", "/app/simple", true},
@@ -216,9 +216,9 @@ app:
 	// Verify specific JSONPath extractions
 	expectedPaths := map[string]bool{
 		"connections.primary.host": false,
-		"connections.replica.host":  false,
-		"db.user":                   false,
-		"db.password":               false,
+		"connections.replica.host": false,
+		"db.user":                  false,
+		"db.password":              false,
 	}
 
 	for _, ref := range psRefs {

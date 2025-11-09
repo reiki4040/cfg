@@ -15,7 +15,7 @@ import (
 type JSONDiff struct {
 	Added    map[string]interface{} // 追加された属性 (path -> value)
 	Removed  map[string]interface{} // 削除された属性 (path -> value)
-	Modified map[string]DiffPair     // 変更された属性 (path -> (old, new))
+	Modified map[string]DiffPair    // 変更された属性 (path -> (old, new))
 }
 
 // DiffPair は変更前後の値ペア

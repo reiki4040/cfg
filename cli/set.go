@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/reiki4040/cfg"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -73,6 +74,96 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	parameterPath := args[0]
 	var value string
 
+	// Parse JSONPath from parameter path (e.g., "/config:database.host")
+	resolvedParamPath, jsonPath, err := parseJsonPath(parameterPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse parameter path: %w", err)
+	}
+
+	// Create stage resolver for path resolution
+	stageResolver := createStageResolver()
+	resolvedPath := resolveParameterPath(resolvedParamPath, stageResolver)
+
+	// Handle JSONPath-based attribute update
+	if jsonPath != "" {
+		// JSONPath update flow
+		if len(args) < 2 {
+			return fmt.Errorf("value is required for JSONPath attribute update")
+		}
+		newValue := args[1]
+
+		// Create AWS client
+		awsClient, err := createAWSClient()
+		if err != nil {
+			return fmt.Errorf("failed to create AWS client: %w", err)
+		}
+
+		ctx := context.Background()
+
+		// Retrieve existing parameter
+		existingValue, err := awsClient.GetParameter(ctx, resolvedPath, true)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve parameter %s: %w", resolvedPath, err)
+		}
+
+		// Update JSON attribute
+		updatedValue, err := cfg.UpdateJsonAttribute(existingValue, jsonPath, newValue)
+		if err != nil {
+			return fmt.Errorf("failed to update JSON attribute: %w", err)
+		}
+
+		// Show diff
+		fmt.Printf("Parameter %s - JSONPath update: %s\n", resolvedPath, jsonPath)
+		if err := showJsonAttributeDiff(existingValue, updatedValue, jsonPath); err != nil {
+			return fmt.Errorf("failed to show diff: %w", err)
+		}
+
+		// Ask for confirmation unless --overwrite flag is used
+		if !setOverwrite {
+			confirmed, err := confirmOverwrite(resolvedPath)
+			if err != nil {
+				return fmt.Errorf("failed to get confirmation: %w", err)
+			}
+			if !confirmed {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+		}
+
+		// If dry-run mode, exit here without making actual changes
+		if setDryRun {
+			fmt.Println("\n[DRY RUN MODE] - No actual changes were made to Parameter Store")
+			return nil
+		}
+
+		// Determine KMS key and parameter type
+		paramType := "String"
+		if setTypeSecure {
+			paramType = "SecureString"
+		} else if setTypeString {
+			paramType = "String"
+		}
+
+		kmsKey := setKMSKeyID
+		if kmsKey == "" && paramType == "SecureString" {
+			kmsKey = getKMSKeyForStageAndRegion(stageResolver.GetStage(), awsRegion)
+		}
+
+		// Update parameter
+		if kmsKey != "" && paramType == "SecureString" {
+			err = awsClient.PutParameterWithKey(ctx, resolvedPath, updatedValue, paramType, true, kmsKey)
+		} else {
+			err = awsClient.PutParameter(ctx, resolvedPath, updatedValue, paramType, true)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to update parameter %s: %w", resolvedPath, err)
+		}
+
+		fmt.Printf("Successfully updated JSON attribute in parameter: %s\n", resolvedPath)
+		return nil
+	}
+
+	// Standard value update flow (non-JSONPath)
 	// Handle JSON input first
 	if setJsonValue != "" || setJsonFile != "" {
 		// Validate that JSON is not being stored as StringList
@@ -123,7 +214,7 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 		if !setInteractive && len(args) < 2 {
 			// Interactive mode by default
 			var err error
-			value, err = promptForValue(parameterPath, setType == "SecureString")
+			value, err = promptForValue(resolvedPath, setType == "SecureString")
 			if err != nil {
 				return fmt.Errorf("failed to get value interactively: %w", err)
 			}
@@ -139,10 +230,6 @@ func runSetCommand(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create AWS client: %w", err)
 	}
-
-	// Create stage resolver and resolve path
-	stageResolver := createStageResolver()
-	resolvedPath := resolveParameterPath(parameterPath, stageResolver)
 
 	ctx := context.Background()
 
@@ -338,6 +425,23 @@ func formatJsonForDisplay(jsonStr string) (string, error) {
 	}
 
 	return string(formatted), nil
+}
+
+// parseJsonPath splits a parameter path into parameter path and JSONPath
+// Format: "/parameter/path:json.path"
+// Example: "/config:database.host" → ("/config", "database.host")
+// If no colon is present, returns the full path and empty JSONPath
+func parseJsonPath(input string) (paramPath string, jsonPath string, err error) {
+	colonIndex := strings.Index(input, ":")
+	if colonIndex == -1 {
+		// No JSONPath specified, just return the parameter path
+		return input, "", nil
+	}
+
+	paramPath = input[:colonIndex]
+	jsonPath = input[colonIndex+1:]
+
+	return paramPath, jsonPath, nil
 }
 
 // showJsonAttributeDiff displays a diff of JSON attribute changes

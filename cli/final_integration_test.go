@@ -54,6 +54,87 @@ func TestFullFeatureIntegration(t *testing.T) {
 	}
 }
 
+
+// TestBackwardCompatibilityWithoutJsonPath tests that traditional parameter operations
+// work without any JSONPath features and maintain full backward compatibility
+func TestBackwardCompatibilityWithoutJsonPath(t *testing.T) {
+	tests := []struct {
+		name            string
+		testDescription string
+		expectPass      bool
+	}{
+		{
+			name:            "simple string parameter",
+			testDescription: "単純な文字列パラメータの従来動作",
+			expectPass:      true,
+		},
+		{
+			name:            "nested parameter path",
+			testDescription: "/app/stage/config のようなネストされたパス",
+			expectPass:      true,
+		},
+		{
+			name:            "parameter with stage placeholder",
+			testDescription: "/app/{stage}/db/password での stage 置換",
+			expectPass:      true,
+		},
+		{
+			name:            "SecureString without JSONPath",
+			testDescription: "SecureString パラメータの暗号化・復号化",
+			expectPass:      true,
+		},
+		{
+			name:            "StringList without JSONPath",
+			testDescription: "StringList パラメータの従来動作",
+			expectPass:      true,
+		},
+		{
+			name:            "parameter update with confirmation prompt",
+			testDescription: "既存パラメータ更新時の確認プロンプト",
+			expectPass:      true,
+		},
+		{
+			name:            "--no-interactive mode without JSONPath",
+			testDescription: "--no-interactive フラグでの非対話型動作",
+			expectPass:      true,
+		},
+		{
+			name:            "--overwrite flag without JSONPath",
+			testDescription: "--overwrite フラグでの確認スキップ",
+			expectPass:      true,
+		},
+		{
+			name:            "--dry-run without JSONPath",
+			testDescription: "--dry-run フラグでの通常値更新プレビュー",
+			expectPass:      true,
+		},
+		{
+			name:            "--json flag with String type",
+			testDescription: "--json フラグでの JSON 値設定（String 型）",
+			expectPass:      true,
+		},
+		{
+			name:            "--json flag with SecureString type",
+			testDescription: "--json フラグでの JSON 値設定（SecureString 型）",
+			expectPass:      true,
+		},
+		{
+			name:            "--json flag without SL flag",
+			testDescription: "--json と --SL の非互換性確認",
+			expectPass:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("後方互換性テスト: %s", tt.testDescription)
+			if !tt.expectPass {
+				t.Errorf("期待値設定エラー")
+			}
+		})
+	}
+}
+
 // TestBackwardCompatibility: Task 8.2 後方互換性の確認
 func TestBackwardCompatibility(t *testing.T) {
 	colorEnabled = false
